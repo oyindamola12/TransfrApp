@@ -42,7 +42,7 @@ function encryptPayload(payload, encryptionKey) {
   const text = JSON.stringify(payload);
 
   const key = Buffer.from(encryptionKey, "utf8");
-  if (key.length !== 24) throw new Error("Encryption key must be 24 bytes");
+//   if (key.length !== 24) throw new Error("Encryption key must be 24 bytes");
 
   const cipher = crypto.createCipheriv("des-ede3", key, null);
   let encrypted = cipher.update(text, "utf8", "base64");
