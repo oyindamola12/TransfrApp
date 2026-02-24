@@ -105,10 +105,7 @@ app.post("/initiate-card-charge", async (req, res) => {
 
 // ================= Example Cron Job =====================
 // Run every day at midnight
-cron.schedule("0 0 * * *", async () => {
-  console.log("Cron job running: checking some scheduled tasks...");
-  // You can use db queries, FCM notifications, etc.
-});
+
 
 // ================= Start Server =====================
 app.listen(PORT, () => {
