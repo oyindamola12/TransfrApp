@@ -24,7 +24,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // ================= Firebase Admin =====================
 // Service account JSON file (CommonJS)
-const serviceAccount = require("./transfrapp-d7ce9-3cf24339a3.json");
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -33,8 +33,8 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // ================= FCM Setup =====================
-const serverKey = process.env.FCM_SERVER_KEY || "YOUR_FCM_SERVER_KEY";
-const fcm = new FCM(serverKey);
+// const serverKey = process.env.FCM_SERVER_KEY || "YOUR_FCM_SERVER_KEY";
+// const fcm = new FCM(serverKey);
 
 // ================= Flutterwave Encryption =====================
 function encryptPayload(payload, encryptionKey) {
