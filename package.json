@@ -1,0 +1,36 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Firebase Functions",
+  "type": "module",
+   "engines": {
+    "node": "18"
+  },
+  "main": "index.js",
+  
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.5",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "cron": "^3.1.6",
+    "express": "^4.18.2",
+    "f": "^1.4.0",
+    "fcm-node": "^1.6.1",
+    "firebase": "^10.5.2",
+   
+    "node-cron": "^3.0.3",
+    "nodemon": "^3.0.2",
+
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^4.7.0"
+  },
+  "devDependencies": {
+    "@babel/helper-compilation-targets": "^7.23.6"
+  }
+}
