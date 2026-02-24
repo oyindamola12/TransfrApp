@@ -74,8 +74,8 @@ app.post("/initiate-card-charge", async (req, res) => {
       customer: { email },
     };
 
-    const secretKey = process.env.FLW_SECRET_KEY;
-    const encryptionKey = process.env.FLW_ENCRYPTION_KEY;
+    const secretKey = process.env.flw_secret_Key;
+    const encryptionKey = process.env.flw_encryption_Key;
 
     const encryptedPayload = encryptPayload(payload, encryptionKey);
 
