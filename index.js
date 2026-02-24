@@ -51,10 +51,61 @@ function encryptPayload(payload, encryptionKey) {
 }
 
 // ================= Flutterwave Charge Route =====================
+// app.post("/initiate-card-charge", async (req, res) => {
+//   try {
+//     const { userId, email, cardNumber, cvv, expiryMonth, expiryYear, pin, amount } =
+//       req.body;
+
+//     // Update email in Firestore
+//     await db.collection("users").doc(userId).update({ email });
+
+//     const txRef = `txn-${Date.now()}`;
+//     const payload = {
+//       tx_ref: txRef,
+//       amount: Number(amount),
+//       currency: "NGN",
+//       payment_type: "card",
+//       card_number: cardNumber,
+//       cvv,
+//       expiry_month: expiryMonth,
+//       expiry_year: expiryYear,
+//       pin,
+//       authorization: { mode: "pin", pin },
+//       customer: { email },
+//     };
+
+//     const secretKey = process.env.flw_secret_Key;
+//     const encryptionKey = process.env.flw_encryption_Key;
+
+//     const encryptedPayload = encryptPayload(payload, encryptionKey);
+
+//     const response = await axios.post(
+//       "https://api.flutterwave.com/v3/charges?type=card",
+//       { client: encryptedPayload },
+//       { headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" } }
+//     );
+
+//     const flwData = response.data;
+//     if (flwData.status !== "success")
+//       return res.status(400).json({ error: flwData.message });
+
+//     return res.json({
+//       success: true,
+//       message: flwData.message,
+//       txRef,
+//       flwRef: flwData.data?.flw_ref || null,
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     return res.status(500).json({
+//       error: err.response?.data?.message || err.message || "Something went wrong",
+//     });
+//   }
+// });
+
 app.post("/initiate-card-charge", async (req, res) => {
   try {
-    const { userId, email, cardNumber, cvv, expiryMonth, expiryYear, pin, amount } =
-      req.body;
+    const { userId, email, cardNumber, cvv, expiryMonth, expiryYear, pin, amount } = req.body;
 
     // Update email in Firestore
     await db.collection("users").doc(userId).update({ email });
@@ -75,19 +126,24 @@ app.post("/initiate-card-charge", async (req, res) => {
     };
 
     const secretKey = process.env.flw_secret_Key;
-    const encryptionKey = process.env.flw_encryption_Key;
 
-    const encryptedPayload = encryptPayload(payload, encryptionKey);
-
+    // Send request directly without encryption
     const response = await axios.post(
       "https://api.flutterwave.com/v3/charges?type=card",
-      { client: encryptedPayload },
-      { headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" } }
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+        },
+      }
     );
 
     const flwData = response.data;
-    if (flwData.status !== "success")
+
+    if (flwData.status !== "success") {
       return res.status(400).json({ error: flwData.message });
+    }
 
     return res.json({
       success: true,
@@ -96,7 +152,7 @@ app.post("/initiate-card-charge", async (req, res) => {
       flwRef: flwData.data?.flw_ref || null,
     });
   } catch (err) {
-    console.error(err);
+    console.error("Flutterwave charge error:", err.response?.data || err.message);
     return res.status(500).json({
       error: err.response?.data?.message || err.message || "Something went wrong",
     });
