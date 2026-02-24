@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 
 // CORS
 const corsOptions = {
-  origin: "http://172.20.10.9:5000", // change to your frontend
+  origin: "*", // change to your frontend
 };
 app.use(cors(corsOptions));
 
