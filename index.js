@@ -1,50 +1,120 @@
-// const express = require('express');
-// const app = express();
-// const PORT = 5000;
-// const bodyparser = require('body-parser');
-// const axios = require('axios');
-// const cron = require('node-cron');
-// const FCM = require('fcm-node');
-// const admin = require('firebase-admin');
+// index.js
+const express = require("express");
+const bodyParser = require("body-parser");
+const axios = require("axios");
+const cron = require("node-cron");
+const FCM = require("fcm-node");
+const admin = require("firebase-admin");
+const cors = require("cors");
+const crypto = require("crypto");
+require("dotenv").config(); // load .env
 
-// const {initializeApp} = require( "firebase/app");
-// const {auth} = require( "firebase/auth");
-// // Import the functions you need from the SDKs you need
-// const firebaseConfig = {
-// apiKey: "AIzaSyBNMeXNMxtnOpUBBikl-qgdVRu2vs1eUno",
-// authDomain: "transfrapp-d7ce9.firebaseapp.com",
-// projectId: "transfrapp-d7ce9",
-// storageBucket: "transfrapp-d7ce9.appspot.com",
-// messagingSenderId: "356150380103",
-// appId: "1:356150380103:web:3f1c8f37333cadd09ad362"
-// };
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// initializeApp(firebaseConfig);
-// const cors = require('cors');
-// const corsOptions = {
-// origin: 'http://172.20.10.9:5000',
-// };
+// CORS
+const corsOptions = {
+  origin: "http://172.20.10.9:5000", // change to your frontend
+};
+app.use(cors(corsOptions));
 
-// app.use(bodyparser.json());
-// app.use(bodyparser.urlencoded({extended: true}));
-// // const PAYSTACK_SECRET_KEY = 'sk_test_4db3cca34a216b384b053d460417c998c0dfad22';
-// // // import service account file (helps to know the firebase project details)
-// const serviceAccount = require('./transfrapp-d7ce9-3cf24339a3.json');
-// const {config} = require('dotenv');
-// var listusers=[]
-// // Global variable to store the data
-// var loanData = null
+// Body parser
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// admin.initializeApp({
-// credential: admin.credential.cert(serviceAccount),
-// });
+// ================= Firebase Admin =====================
+// Service account JSON file (CommonJS)
+const serviceAccount = require("./transfrapp-d7ce9-3cf24339a3.json");
 
-// const options = {
-// timeout: 30000, // Set to 30 seconds or adjust as needed
-// };
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
-// const serverKey = 'AIzaSyD6omKevI7RMzA_KjN1lzY18MfZFgn_Am0'; //put your server key here
-// const fcm = new FCM(serverKey);
+const db = admin.firestore();
+
+// ================= FCM Setup =====================
+const serverKey = process.env.FCM_SERVER_KEY || "YOUR_FCM_SERVER_KEY";
+const fcm = new FCM(serverKey);
+
+// ================= Flutterwave Encryption =====================
+function encryptPayload(payload, encryptionKey) {
+  if (!encryptionKey) throw new Error("Encryption key missing");
+  const text = JSON.stringify(payload);
+
+  const key = Buffer.from(encryptionKey, "utf8");
+  if (key.length !== 24) throw new Error("Encryption key must be 24 bytes");
+
+  const cipher = crypto.createCipheriv("des-ede3", key, null);
+  let encrypted = cipher.update(text, "utf8", "base64");
+  encrypted += cipher.final("base64");
+  return encrypted;
+}
+
+// ================= Flutterwave Charge Route =====================
+app.post("/initiate-card-charge", async (req, res) => {
+  try {
+    const { userId, email, cardNumber, cvv, expiryMonth, expiryYear, pin, amount } =
+      req.body;
+
+    // Update email in Firestore
+    await db.collection("users").doc(userId).update({ email });
+
+    const txRef = `txn-${Date.now()}`;
+    const payload = {
+      tx_ref: txRef,
+      amount: Number(amount),
+      currency: "NGN",
+      payment_type: "card",
+      card_number: cardNumber,
+      cvv,
+      expiry_month: expiryMonth,
+      expiry_year: expiryYear,
+      pin,
+      authorization: { mode: "pin", pin },
+      customer: { email },
+    };
+
+    const secretKey = process.env.FLW_SECRET_KEY;
+    const encryptionKey = process.env.FLW_ENCRYPTION_KEY;
+
+    const encryptedPayload = encryptPayload(payload, encryptionKey);
+
+    const response = await axios.post(
+      "https://api.flutterwave.com/v3/charges?type=card",
+      { client: encryptedPayload },
+      { headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" } }
+    );
+
+    const flwData = response.data;
+    if (flwData.status !== "success")
+      return res.status(400).json({ error: flwData.message });
+
+    return res.json({
+      success: true,
+      message: flwData.message,
+      txRef,
+      flwRef: flwData.data?.flw_ref || null,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      error: err.response?.data?.message || err.message || "Something went wrong",
+    });
+  }
+});
+
+// ================= Example Cron Job =====================
+// Run every day at midnight
+cron.schedule("0 0 * * *", async () => {
+  console.log("Cron job running: checking some scheduled tasks...");
+  // You can use db queries, FCM notifications, etc.
+});
+
+// ================= Start Server =====================
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
+
 
 // app.get('/message', async (req, res) => {
 // const db = admin.firestore();
@@ -724,24 +794,40 @@
 // app.listen(PORT, ()=> console.log('App is listening on url http://172.20.10.9:' + PORT))
 
 
-// Load environment variables
-import dotenv from "dotenv";
-import express from "express";
-import cors from "cors";
+// // Load environment variables
 
-dotenv.config();
+// // import dotenv from "dotenv";
+// // import express from "express";
+// // import cors from "cors";
+// // import admin from "firebase-admin";
 
-const app = express();
+// // // index.js
+// // import axios from "axios";
+// // import crypto from "crypto";
 
-app.use(cors());
-app.use(express.json());
+// // dotenv.config();
 
-app.get("/", (req, res) => {
-  res.json({ message: "Server running 🚀" });
-});
+// // const app = express();
 
-const PORT = process.env.PORT || 3000;
+// // app.use(cors());
+// // app.use(express.json());
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// // const serviceAccount = JSON.parse(
+// //   Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8")
+// // );
+// // admin.initializeApp({
+// //   credential: admin.credential.cert(serviceAccount),
+// // });
+
+// // const db = admin.firestore();
+
+
+// // app.get("/", (req, res) => {
+// //   res.json({ message: "Server running 🚀" });
+// // });
+
+// // const PORT = process.env.PORT || 3000;
+
+// // app.listen(PORT, "0.0.0.0", () => {
+// //   console.log(`Server running on port ${PORT}`);
+// // });
