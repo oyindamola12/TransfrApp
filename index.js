@@ -71,6 +71,7 @@ const encryptPayload = (payload, encryptionKey) => {
   return encrypted.toString();
 };
 // ================= Flutterwave Charge Route =====================
+
 app.post("/initiate-card-charge", async (req, res) => {
   try {
     const { userId, email, cardNumber, cvv, expiryMonth, expiryYear, pin, amount } =
