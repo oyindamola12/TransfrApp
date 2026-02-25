@@ -100,7 +100,7 @@ app.post("/initiate-card-charge", async (req, res) => {
     const encryptedPayload = encryptPayload(payload, encryptionKey);
 
     const response = await axios.post(
-      "https://api.flutterwave.com/v3/charges?type=card",
+      "https://api.flutterwave.com/v4/charges?type=card",
       { client: encryptedPayload },
       { headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" } }
     );
