@@ -142,9 +142,9 @@ app.post("/bank-withdrawal", async (req, res) => {
       narration,
     } = req.body;
 
-    if (!amount || !accountNumber || !bankCode) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
+    // if (!amount || !accountNumber || !bankCode) {
+    //   return res.status(400).json({ error: "Missing required fields" });
+    // }
 
     const response = await axios.post(
       "https://api.flutterwave.com/v3/transfers",
