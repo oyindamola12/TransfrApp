@@ -129,10 +129,59 @@ app.post("/initiate-card-charge", async (req, res) => {
 
 
 // ================= Start Server =====================
+
+
+
+
+app.post("/bank-withdrawal", async (req, res) => {
+  try {
+    const {
+      amount,
+      accountNumber,
+      bankCode,
+      narration,
+    } = req.body;
+
+    if (!amount || !accountNumber || !bankCode) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const response = await axios.post(
+      "https://api.flutterwave.com/v3/transfers",
+      {
+        account_bank: bankCode,
+        account_number: accountNumber,
+        amount: Number(amount),
+        currency: "NGN",
+        narration: narration || "Wallet withdrawal",
+        reference: `wd-${Date.now()}`,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.flw_secret_Key}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    return res.json({
+      success: true,
+      message: response.data.message,
+      data: response.data.data,
+    });
+
+  } catch (err) {
+    console.error(err.response?.data || err.message);
+    return res.status(500).json({
+      error: err.response?.data?.message || "Transfer failed",
+    });
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${process.env.PORT}`);
 });
-
 
 // app.get('/message', async (req, res) => {
 // const db = admin.firestore();
