@@ -139,7 +139,7 @@ app.post("/bank-withdrawal", async (req, res) => {
       amount,
       accountNumber,
       bankCode,
-      narration,
+      // narration,
     } = req.body;
 
     // if (!amount || !accountNumber || !bankCode) {
@@ -153,7 +153,7 @@ app.post("/bank-withdrawal", async (req, res) => {
         account_number: accountNumber,
         amount: Number(amount),
         currency: "NGN",
-        narration: narration || "Wallet withdrawal",
+        narration:"Wallet withdrawal",
         reference: `wd-${Date.now()}`,
       },
       {
