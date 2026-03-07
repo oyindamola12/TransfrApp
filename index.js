@@ -17,6 +17,7 @@ const PORT = process.env.PORT || 3000;
 const corsOptions = {
   origin: "*", // change to your frontend
 };
+
 app.use(cors(corsOptions));
 
 // Body parser
@@ -33,105 +34,183 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// ================= FCM Setup =====================
-// const serverKey = process.env.FCM_SERVER_KEY || "YOUR_FCM_SERVER_KEY";
-// const fcm = new FCM(serverKey);
-
-// ================= Flutterwave Encryption =====================
-// function encryptPayload(payload, encryptionKey) {
-//   if (!encryptionKey) throw new Error("Encryption key missing");
-//   const text = JSON.stringify(payload);
-
-//   const key = Buffer.from(encryptionKey, "utf8");
-//   if (key.length !== 24) throw new Error("Encryption key must be 24 bytes");
-
-//   const cipher = crypto.createCipheriv("des-ede3", key, null);
-//   let encrypted = cipher.update(text, "utf8", "base64");
-//   encrypted += cipher.final("base64");
-//   return encrypted;
-// }
 
 
+const FLW_SECRET_KEY = "FLWSECK-XXXX"; // replace with your actual key
 
-// 🔹 Helper to fix encryption key to 24 bytes
-const fixKeyLength = (key) => {
-  let k = key.replace(/=*$/g, ""); // remove '=' if base64
-  if (k.length < 24) k = k.padEnd(24, "0"); // pad with zeros
-  else if (k.length > 24) k = k.substring(0, 24); // truncate if too long
-  return k;
-};
 
-// 🔹 Encryption function using CryptoJS TripleDES
-const encryptPayload = (payload, encryptionKey) => {
-  const fixedKey = CryptoJS.enc.Utf8.parse(fixKeyLength(encryptionKey));
-  const encrypted = CryptoJS.TripleDES.encrypt(JSON.stringify(payload), fixedKey, {
-    mode: CryptoJS.mode.ECB,
-    padding: CryptoJS.pad.Pkcs7,
-  });
-  return encrypted.toString();
-};
-// ================= Flutterwave Charge Route =====================
-
-app.post("/initiate-card-charge", async (req, res) => {
+app.post("/create-payment", async (req, res) => {
   try {
-    const { userId, email, cardNumber, cvv, expiryMonth, expiryYear, pin, amount } =
-      req.body;
+    const { transaction_id, userId, cardId, firstname, lastname } = req.body;
 
-    // Update email in Firestore
-    await db.collection("users").doc(userId).update({ email });
+    // if (!transaction_id || !userId || !cardId) {
+    //   return res.status(400).json({ success: false, message: "Missing required fields" });
+    // }
 
-    const txRef = `txn-${Date.now()}`;
-    const payload = {
-      tx_ref: txRef,
-      amount: Number(amount),
-      currency: "NGN",
-      payment_type: "card",
-      card_number: cardNumber,
-      cvv,
-      expiry_month: expiryMonth,
-      expiry_year: expiryYear,
-      pin,
-      authorization: { mode: "pin", pin },
-      customer: { email },
-    };
-
-    const secretKey = process.env.flw_secret_Key;
-    const encryptionKey = process.env.flw_encryption_Key;
-
-    const encryptedPayload = encryptPayload(payload, encryptionKey);
-
-    const response = await axios.post(
-      "https://api.flutterwave.com/v3/charges?type=card",
-      { client: encryptedPayload },
-      { headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" } }
+    // Verify payment with Flutterwave
+    const response = await axios.get(
+      `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
+      {
+        headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
+      }
     );
 
-    const flwData = response.data;
-    if (flwData.status !== "success")
-      return res.status(400).json({ error: flwData.message });
+    if (response.data.status !== "success") {
+      return res.status(400).json({  message: "Payment verification failed" });
+    }
 
-    return res.json({
-      success: true,
-      message: flwData.message,
-      txRef,
-      flwRef: flwData.data?.flw_ref || null,
+    const amount = Number(response.data.data.amount);
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef.collection("Cards").doc(cardId);
+    const cardRef2 = db.collection("Cards").doc(cardId);
+
+    await db.runTransaction(async (tx) => {
+      // Get the user's card
+  
+      const oldBalance = cardDoc.data().balance || 0;
+      const newBalance = oldBalance + amount;
+
+      // Update card balances
+      tx.update(cardRef, { balance: newBalance });
+      tx.update(cardRef2, { balance: newBalance });
+
+      // Update user notifications
+      tx.update(userRef, { notification: true, inappnotification: true });
+
+      // Add user transaction
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+        amount,
+        balance: newBalance,
+      cardNumber  : cardId,
+        status: "BankFund",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        cardType: "wallet",
+        paymentMethod: "bank",
+        firstname,
+        lastname,
+        transactionNo: transaction_id,
+      });
+
+      // Add global transaction
+      const allTxnRef = db.collection("AllTransaction").doc();
+      tx.set(allTxnRef, {
+        amount,
+        cardType: "wallet",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        redeemer: { firstname: firstname +''+ lastname },
+           transactionNo: transaction_id,
+      });
     });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({
-      error: err.response?.data?.message || err.message || "Something went wrong",
+
+    res.json({ success: true, data: response.data.data });
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Internal server error",
     });
   }
 });
 
-// ================= Example Cron Job =====================
-// Run every day at midnight
-
-
-// ================= Start Server =====================
 
 
 
+
+app.post("/create-payment-ticket", async (req, res) => {
+  try {
+    const { transaction_id, userId, cardId, firstname, lastname } = req.body;
+
+    // if (!transaction_id || !userId || !cardId) {
+    //   return res.status(400).json({ success: false, message: "Missing required fields" });
+    // }
+
+    // Verify payment with Flutterwave
+    const response = await axios.get(
+      `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
+      {
+        headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
+      }
+    );
+
+    if (response.data.status !== "success") {
+      return res.status(400).json({  message: "Payment verification failed" });
+    }
+
+    const amount = Number(response.data.data.amount);
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef.collection("tickets").doc(cardId);
+    const cardRef2 = db.collection("tickets").doc(cardId);
+
+    await db.runTransaction(async (tx) => {
+      // Get the user's card
+  
+      const oldBalance = cardDoc.data().balance || 0;
+      const newBalance = oldBalance + amount;
+
+      // Update card balances
+      tx.update(cardRef, { balance: newBalance });
+      tx.update(cardRef2, { balance: newBalance });
+
+      // Update user notifications
+      tx.update(userRef, { notification: true, inappnotification: true });
+
+      // Add user transaction
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+        amount,
+        balance: newBalance,
+        cardNumber: cardId,
+        status: "ticketFund",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        cardType: "tickets",
+        paymentMethod: "bank",
+        firstname,
+        lastname,
+        transactionNo: transaction_id,
+        businessType: 'ticket',
+
+
+
+      });
+
+      // Add global transaction
+      const allTxnRef = db.collection("AllTransaction").doc();
+      tx.set(allTxnRef, {
+        amount,
+        cardType: "tickets",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+          redeemer: { firstname: firstname +''+ lastname },
+       transactionNo: transaction_id,
+      });
+    });
+
+    res.json({ success: true, data: response.data.data });
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Internal server error",
+    });
+  }
+});
+
+
+app.get("/verify/:id", async (req, res) => {
+
+  const txId = req.params.id;
+
+  const response = await axios.get(
+    `https://api.flutterwave.com/v3/transactions/${txId}/verify`,
+    {
+      headers: {
+         Authorization: `Bearer ${secretKey}`,
+      }
+    }
+  );
+
+  res.json(response.data);
+});
 
 app.post("/bank-withdrawal", async (req, res) => {
   try {
@@ -179,9 +258,12 @@ app.post("/bank-withdrawal", async (req, res) => {
 });
 
 
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${process.env.PORT}`);
 });
+
+
 
 // app.get('/message', async (req, res) => {
 // const db = admin.firestore();
