@@ -41,27 +41,29 @@ const FLW_SECRET_KEY = "FLWSECK_TEST-41f568066a3e9d9bfaaedeca9f8e5572-X"; // rep
 
 app.post("/create-payment", async (req, res) => {
   try {
-    const { transaction_id, userId, cardId, firstname, lastname, amount } = req.body;
+    const { transaction_id, userId, cardId, firstname, lastname, amount,status } = req.body;
 
     // Verify payment with Flutterwave
-    const response = await axios.get(
-      `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
-      {
-        headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
-      }
-    );
+  //   const response = await axios.get(
+  //     `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
+  //     {
+  //       headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
+  //     }
+  //   );
 
-    if (
-      response.data.status !== "success" ||
-      response.data.data.status !== "successful"
-    ) {
-      return res.status(400).json({ message: "Payment verification failed" });
-    }
+  //   if (
+  //    status!== "success" ||
+  // status!== "successful"
+  //   ) {
+  //     return res.status(400).json({ message: "Payment verification failed" });
+  //   }
 
-    const userRef = db.collection("users").doc(userId);
+  const userRef = db.collection("users").doc(userId);
     const cardRef = userRef.collection("Cards").doc(cardId);
     const cardRef2 = db.collection("Cards").doc(cardId);
-
+  
+if(status === "successful"){
+  
     await db.runTransaction(async (tx) => {
 
       // 🔹 READ THE CARD DOCUMENT
@@ -111,6 +113,9 @@ app.post("/create-payment", async (req, res) => {
       });
 
     });
+}
+  
+
 
     res.json({ success: true, data: response.data.data });
 
@@ -128,29 +133,30 @@ app.post("/create-payment", async (req, res) => {
 
 app.post("/create-payment-ticket", async (req, res) => {
   try {
-    const { transaction_id, userId, cardId, firstname, lastname,amount } = req.body;
+    const { transaction_id, userId, cardId, firstname, lastname,amount,status } = req.body;
 
     // Verify payment with Flutterwave
-    const response = await axios.get(
-      `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
-      {
-        headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
-      }
-    );
+    // const response = await axios.get(
+    //   `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
+    //   {
+    //     headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
+    //   }
+    // );
 
-    if (
-      response.data.status !== "success" ||
-      response.data.data.status !== "successful"
-    ) {
-      return res.status(400).json({ message: "Payment verification failed" });
-    }
+    // if (
+    //   response.data.status !== "success" ||
+    //   response.data.data.status !== "successful"
+    // ) {
+    //   return res.status(400).json({ message: "Payment verification failed" });
 
-    // const amount = Number(response.data.data.amount);
+    // }
 
-    const userRef = db.collection("users").doc(userId);
+
+        const userRef = db.collection("users").doc(userId);
     const ticketRef = userRef.collection("tickets").doc(cardId);
     const ticketRef2 = db.collection("tickets").doc(cardId);
-
+if(status === "successful"){
+ 
     await db.runTransaction(async (tx) => {
 
       // 🔹 READ THE DOCUMENT FIRST
@@ -200,7 +206,13 @@ app.post("/create-payment-ticket", async (req, res) => {
         transactionNo: transaction_id,
       });
 
-    });
+    }); 
+}
+    // const amount = Number(response.data.data.amount);
+
+
+
+
 
     res.json({ success: true, data: response.data.data });
 
