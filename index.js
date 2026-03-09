@@ -41,11 +41,7 @@ const FLW_SECRET_KEY = "FLWSECK_TEST-41f568066a3e9d9bfaaedeca9f8e5572-X"; // rep
 
 app.post("/create-payment", async (req, res) => {
   try {
-    const { transaction_id, userId, cardId, firstname, lastname } = req.body;
-
-    // if (!transaction_id || !userId || !cardId) {
-    //   return res.status(400).json({ success: false, message: "Missing required fields" });
-    // }
+    const { transaction_id, userId, cardId, firstname, lastname, amount } = req.body;
 
     // Verify payment with Flutterwave
     const response = await axios.get(
@@ -55,34 +51,45 @@ app.post("/create-payment", async (req, res) => {
       }
     );
 
-    if (response.data.status !== "success") {
-      return res.status(400).json({  message: "Payment verification failed" });
+    if (
+      response.data.status !== "success" ||
+      response.data.data.status !== "successful"
+    ) {
+      return res.status(400).json({ message: "Payment verification failed" });
     }
 
-    const amount = Number(response.data.data.amount);
     const userRef = db.collection("users").doc(userId);
     const cardRef = userRef.collection("Cards").doc(cardId);
     const cardRef2 = db.collection("Cards").doc(cardId);
 
     await db.runTransaction(async (tx) => {
-      // Get the user's card
-  
-      const oldBalance = cardDoc.data().balance || 0;
-      const newBalance = oldBalance + amount;
 
-      // Update card balances
-      tx.update(cardRef, { balance: newBalance });
-      tx.update(cardRef2, { balance: newBalance });
+      // 🔹 READ THE CARD DOCUMENT
+      const cardDoc = await tx.get(cardRef);
 
-      // Update user notifications
-      tx.update(userRef, { notification: true, inappnotification: true });
+      // 🔹 GET CURRENT BALANCE
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
 
-      // Add user transaction
+      const newBalance = oldBalance + Number(amount);
+
+      // 🔹 UPDATE BALANCES
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
+
+      // 🔹 UPDATE USER NOTIFICATION
+      tx.set(
+        userRef,
+        { notification: true, inappnotification: true },
+        { merge: true }
+      );
+
+      // 🔹 ADD USER TRANSACTION
       const userTxnRef = userRef.collection("Transactions").doc();
+
       tx.set(userTxnRef, {
         amount,
         balance: newBalance,
-      cardNumber  : cardId,
+        cardNumber: cardId,
         status: "BankFund",
         date: admin.firestore.FieldValue.serverTimestamp(),
         cardType: "wallet",
@@ -92,23 +99,27 @@ app.post("/create-payment", async (req, res) => {
         transactionNo: transaction_id,
       });
 
-      // Add global transaction
+      // 🔹 ADD GLOBAL TRANSACTION
       const allTxnRef = db.collection("AllTransaction").doc();
+
       tx.set(allTxnRef, {
         amount,
         cardType: "wallet",
         date: admin.firestore.FieldValue.serverTimestamp(),
-        redeemer: { firstname: firstname +''+ lastname },
-           transactionNo: transaction_id,
+        redeemer: { name: firstname + " " + lastname },
+        transactionNo: transaction_id,
       });
+
     });
 
     res.json({ success: true, data: response.data.data });
+
   } catch (error) {
     console.error(error.response?.data || error.message);
+
     res.status(500).json({
       success: false,
-      message: error.response?.data?.message || error.message || "Internal server error",
+      message: error.response?.data?.message || error.message,
     });
   }
 });
@@ -117,11 +128,7 @@ app.post("/create-payment", async (req, res) => {
 
 app.post("/create-payment-ticket", async (req, res) => {
   try {
-    const { transaction_id, userId, cardId, firstname, lastname } = req.body;
-
-    // if (!transaction_id || !userId || !cardId) {
-    //   return res.status(400).json({ success: false, message: "Missing required fields" });
-    // }
+    const { transaction_id, userId, cardId, firstname, lastname,amount } = req.body;
 
     // Verify payment with Flutterwave
     const response = await axios.get(
@@ -131,30 +138,43 @@ app.post("/create-payment-ticket", async (req, res) => {
       }
     );
 
-    if (response.data.status !== "success") {
-      return res.status(400).json({  message: "Payment verification failed" });
+    if (
+      response.data.status !== "success" ||
+      response.data.data.status !== "successful"
+    ) {
+      return res.status(400).json({ message: "Payment verification failed" });
     }
 
-    const amount = Number(response.data.data.amount);
+    // const amount = Number(response.data.data.amount);
+
     const userRef = db.collection("users").doc(userId);
-    const cardRef = userRef.collection("tickets").doc(cardId);
-    const cardRef2 = db.collection("tickets").doc(cardId);
+    const ticketRef = userRef.collection("tickets").doc(cardId);
+    const ticketRef2 = db.collection("tickets").doc(cardId);
 
     await db.runTransaction(async (tx) => {
-      // Get the user's card
-  
-      const oldBalance = cardDoc.data().balance || 0;
+
+      // 🔹 READ THE DOCUMENT FIRST
+      const ticketDoc = await tx.get(ticketRef);
+
+      // 🔹 SAFE BALANCE READ
+      const oldBalance = ticketDoc.exists ? ticketDoc.data().balance || 0 : 0;
+
       const newBalance = oldBalance + amount;
 
-      // Update card balances
-      tx.update(cardRef, { balance: newBalance });
-      tx.update(cardRef2, { balance: newBalance });
+      // 🔹 UPDATE BALANCE
+      tx.set(ticketRef, { balance: newBalance }, { merge: true });
+      tx.set(ticketRef2, { balance: newBalance }, { merge: true });
 
-      // Update user notifications
-      tx.update(userRef, { notification: true, inappnotification: true });
+      // 🔹 UPDATE USER NOTIFICATION
+      tx.set(
+        userRef,
+        { notification: true, inappnotification: true },
+        { merge: true }
+      );
 
-      // Add user transaction
+      // 🔹 USER TRANSACTION
       const userTxnRef = userRef.collection("Transactions").doc();
+
       tx.set(userTxnRef, {
         amount,
         balance: newBalance,
@@ -166,33 +186,33 @@ app.post("/create-payment-ticket", async (req, res) => {
         firstname,
         lastname,
         transactionNo: transaction_id,
-        businessType: 'ticket',
-
-
-
+        businessType: "ticket",
       });
 
-      // Add global transaction
+      // 🔹 GLOBAL TRANSACTION
       const allTxnRef = db.collection("AllTransaction").doc();
+
       tx.set(allTxnRef, {
         amount,
         cardType: "tickets",
         date: admin.firestore.FieldValue.serverTimestamp(),
-          redeemer: { firstname: firstname +''+ lastname },
-       transactionNo: transaction_id,
+        redeemer: { name: firstname + " " + lastname },
+        transactionNo: transaction_id,
       });
+
     });
 
     res.json({ success: true, data: response.data.data });
+
   } catch (error) {
     console.error(error.response?.data || error.message);
+
     res.status(500).json({
       success: false,
-      message: error.response?.data?.message || error.message || "Internal server error",
+      message: error.response?.data?.message || error.message,
     });
   }
 });
-
 
 app.get("/verify/:id", async (req, res) => {
 
