@@ -210,7 +210,7 @@ app.post("/create-payment", async (req, res) => {
 // POST /create-payment-ticket
 app.post("/create-payment-ticket", async (req, res) => {
   try {
-    const { transaction_id, userId, cardId, firstname, lastname, amount, status } = req.body;
+    const { userId, cardId, firstname, lastname, amount, status, transaction_id } = req.body;
 
     // if (!userId || !cardId || !amount || !status) {
     //   return res.status(400).json({ message: "Missing required fields" });
@@ -221,23 +221,23 @@ app.post("/create-payment-ticket", async (req, res) => {
     }
 
     const userRef = db.collection("users").doc(userId);
-    const ticketRef = userRef.collection("tickets").doc(cardId);
-    const ticketRef2 = db.collection("tickets").doc(cardId);
+    const cardRef = userRef.collection("tickets").doc(cardId);
+    const cardRef2 = db.collection("tickets").doc(cardId);
 
     await db.runTransaction(async (tx) => {
-      // 🔹 Read current ticket balance
-      const ticketDoc = await tx.get(ticketRef);
-      const oldBalance = ticketDoc.exists ? ticketDoc.data().balance || 0 : 0;
+      // 🔹 Read current balance
+      const cardDoc = await tx.get(cardRef);
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
       const newBalance = oldBalance + Number(amount);
 
       // 🔹 Update balances
-      tx.set(ticketRef, { balance: newBalance }, { merge: true });
-      tx.set(ticketRef2, { balance: newBalance }, { merge: true });
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
 
       // 🔹 Update user notifications
       tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
 
-      // 🔹 Add user transaction
+      // 🔹 Add user transaction log
       const userTxnRef = userRef.collection("Transactions").doc();
       tx.set(userTxnRef, {
         amount,
@@ -253,7 +253,8 @@ app.post("/create-payment-ticket", async (req, res) => {
         businessType: "ticket",
       });
 
-      // 🔹 Add global transaction
+
+      // 🔹 Add global transaction log
       const allTxnRef = db.collection("AllTransaction").doc();
       tx.set(allTxnRef, {
         amount,
@@ -264,13 +265,10 @@ app.post("/create-payment-ticket", async (req, res) => {
       });
     });
 
-    res.json({ success: true, message: "Ticket payment recorded successfully" });
+    res.json({ success: true, message: "Payment recorded successfully" });
   } catch (error) {
-    console.error(error.message || error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 app.get("/verify/:id", async (req, res) => {
