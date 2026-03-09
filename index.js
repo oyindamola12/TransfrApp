@@ -46,56 +46,37 @@ app.get("/ping", (req, res) => {
   res.json({ success: true, message: "Backend is connected!" });
 });
 
-
 app.post("/create-payment", async (req, res) => {
   try {
-    const { transaction_id, userId, cardId, firstname, lastname, amount,status } = req.body;
+    const { userId, cardId, firstname, lastname, amount, status, transaction_id } = req.body;
 
-    // Verify payment with Flutterwave
-  //   const response = await axios.get(
-  //     `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
-  //     {
-  //       headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
-  //     }
-  //   );
+    // if (!userId || !cardId || !amount || !status) {
+    //   return res.status(400).json({ message: "Missing required fields" });
+    // }
 
-  //   if (
-  //    status!== "success" ||
-  // status!== "successful"
-  //   ) {
-  //     return res.status(400).json({ message: "Payment verification failed" });
-  //   }
+    if (status !== "successful") {
+      return res.status(400).json({ message: "Payment not successful" });
+    }
 
-  const userRef = db.collection("users").doc(userId);
+    const userRef = db.collection("users").doc(userId);
     const cardRef = userRef.collection("Cards").doc(cardId);
     const cardRef2 = db.collection("Cards").doc(cardId);
-  
-if(status === "successful"){
-  
+
     await db.runTransaction(async (tx) => {
-
-      // 🔹 READ THE CARD DOCUMENT
+      // 🔹 Read current balance
       const cardDoc = await tx.get(cardRef);
-
-      // 🔹 GET CURRENT BALANCE
       const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
-
       const newBalance = oldBalance + Number(amount);
 
-      // 🔹 UPDATE BALANCES
+      // 🔹 Update balances
       tx.set(cardRef, { balance: newBalance }, { merge: true });
       tx.set(cardRef2, { balance: newBalance }, { merge: true });
 
-      // 🔹 UPDATE USER NOTIFICATION
-      tx.set(
-        userRef,
-        { notification: true, inappnotification: true },
-        { merge: true }
-      );
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
 
-      // 🔹 ADD USER TRANSACTION
+      // 🔹 Add user transaction log
       const userTxnRef = userRef.collection("Transactions").doc();
-
       tx.set(userTxnRef, {
         amount,
         balance: newBalance,
@@ -106,89 +87,158 @@ if(status === "successful"){
         paymentMethod: "bank",
         firstname,
         lastname,
-        transactionNo: transaction_id,
+        transactionNo: transaction_id || `txn-${Date.now()}`,
       });
 
-      // 🔹 ADD GLOBAL TRANSACTION
+      // 🔹 Add global transaction log
       const allTxnRef = db.collection("AllTransaction").doc();
-
       tx.set(allTxnRef, {
         amount,
         cardType: "wallet",
         date: admin.firestore.FieldValue.serverTimestamp(),
         redeemer: { name: firstname + " " + lastname },
-        transactionNo: transaction_id,
+        transactionNo: transaction_id || `txn-${Date.now()}`,
       });
-
     });
-}
-  
 
-
-    res.json({ success: true, data: response.data.data });
-
+    res.json({ success: true, message: "Payment recorded successfully" });
   } catch (error) {
-    console.error(error.response?.data || error.message);
-
-    res.status(500).json({
-      success: false,
-      message: error.response?.data?.message || error.message,
-    });
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
 
 
+// app.post("/create-payment-ticket", async (req, res) => {
+//   try {
+//     const { transaction_id, userId, cardId, firstname, lastname,amount,status } = req.body;
+
+//     // Verify payment with Flutterwave
+//     // const response = await axios.get(
+//     //   `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
+//     //   {
+//     //     headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
+//     //   }
+//     // );
+
+//     // if (
+//     //   response.data.status !== "success" ||
+//     //   response.data.data.status !== "successful"
+//     // ) {
+//     //   return res.status(400).json({ message: "Payment verification failed" });
+
+//     // }
+
+
+//         const userRef = db.collection("users").doc(userId);
+//     const ticketRef = userRef.collection("tickets").doc(cardId);
+//     const ticketRef2 = db.collection("tickets").doc(cardId);
+// if(status === "successful"){
+ 
+//     await db.runTransaction(async (tx) => {
+
+//       // 🔹 READ THE DOCUMENT FIRST
+//       const ticketDoc = await tx.get(ticketRef);
+
+//       // 🔹 SAFE BALANCE READ
+//       const oldBalance = ticketDoc.exists ? ticketDoc.data().balance || 0 : 0;
+
+//       const newBalance = oldBalance + amount;
+
+//       // 🔹 UPDATE BALANCE
+//       tx.set(ticketRef, { balance: newBalance }, { merge: true });
+//       tx.set(ticketRef2, { balance: newBalance }, { merge: true });
+
+//       // 🔹 UPDATE USER NOTIFICATION
+//       tx.set(
+//         userRef,
+//         { notification: true, inappnotification: true },
+//         { merge: true }
+//       );
+
+//       // 🔹 USER TRANSACTION
+//       const userTxnRef = userRef.collection("Transactions").doc();
+
+//       tx.set(userTxnRef, {
+//         amount,
+//         balance: newBalance,
+//         cardNumber: cardId,
+//         status: "ticketFund",
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//         cardType: "tickets",
+//         paymentMethod: "bank",
+//         firstname,
+//         lastname,
+//         transactionNo: transaction_id,
+//         businessType: "ticket",
+//       });
+
+//       // 🔹 GLOBAL TRANSACTION
+//       const allTxnRef = db.collection("AllTransaction").doc();
+
+//       tx.set(allTxnRef, {
+//         amount,
+//         cardType: "tickets",
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//         redeemer: { name: firstname + " " + lastname },
+//         transactionNo: transaction_id,
+//       });
+
+//     }); 
+// }
+//     // const amount = Number(response.data.data.amount);
+
+
+
+
+
+//     res.json({ success: true, data: response.data.data });
+
+//   } catch (error) {
+//     console.error(error.response?.data || error.message);
+
+//     res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message,
+//     });
+//   }
+// });
+
+
+
+// POST /create-payment-ticket
 app.post("/create-payment-ticket", async (req, res) => {
   try {
-    const { transaction_id, userId, cardId, firstname, lastname,amount,status } = req.body;
+    const { transaction_id, userId, cardId, firstname, lastname, amount, status } = req.body;
 
-    // Verify payment with Flutterwave
-    // const response = await axios.get(
-    //   `https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`,
-    //   {
-    //     headers: { Authorization: `Bearer ${FLW_SECRET_KEY}` },
-    //   }
-    // );
-
-    // if (
-    //   response.data.status !== "success" ||
-    //   response.data.data.status !== "successful"
-    // ) {
-    //   return res.status(400).json({ message: "Payment verification failed" });
-
+    // if (!userId || !cardId || !amount || !status) {
+    //   return res.status(400).json({ message: "Missing required fields" });
     // }
 
+    if (status !== "successful") {
+      return res.status(400).json({ message: "Payment not successful" });
+    }
 
-        const userRef = db.collection("users").doc(userId);
+    const userRef = db.collection("users").doc(userId);
     const ticketRef = userRef.collection("tickets").doc(cardId);
     const ticketRef2 = db.collection("tickets").doc(cardId);
-if(status === "successful"){
- 
+
     await db.runTransaction(async (tx) => {
-
-      // 🔹 READ THE DOCUMENT FIRST
+      // 🔹 Read current ticket balance
       const ticketDoc = await tx.get(ticketRef);
-
-      // 🔹 SAFE BALANCE READ
       const oldBalance = ticketDoc.exists ? ticketDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance + Number(amount);
 
-      const newBalance = oldBalance + amount;
-
-      // 🔹 UPDATE BALANCE
+      // 🔹 Update balances
       tx.set(ticketRef, { balance: newBalance }, { merge: true });
       tx.set(ticketRef2, { balance: newBalance }, { merge: true });
 
-      // 🔹 UPDATE USER NOTIFICATION
-      tx.set(
-        userRef,
-        { notification: true, inappnotification: true },
-        { merge: true }
-      );
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
 
-      // 🔹 USER TRANSACTION
+      // 🔹 Add user transaction
       const userTxnRef = userRef.collection("Transactions").doc();
-
       tx.set(userTxnRef, {
         amount,
         balance: newBalance,
@@ -199,41 +249,30 @@ if(status === "successful"){
         paymentMethod: "bank",
         firstname,
         lastname,
-        transactionNo: transaction_id,
+        transactionNo: transaction_id || `txn-${Date.now()}`,
         businessType: "ticket",
       });
 
-      // 🔹 GLOBAL TRANSACTION
+      // 🔹 Add global transaction
       const allTxnRef = db.collection("AllTransaction").doc();
-
       tx.set(allTxnRef, {
         amount,
         cardType: "tickets",
         date: admin.firestore.FieldValue.serverTimestamp(),
         redeemer: { name: firstname + " " + lastname },
-        transactionNo: transaction_id,
+        transactionNo: transaction_id || `txn-${Date.now()}`,
       });
+    });
 
-    }); 
-}
-    // const amount = Number(response.data.data.amount);
-
-
-
-
-
-    res.json({ success: true, data: response.data.data });
-
+    res.json({ success: true, message: "Ticket payment recorded successfully" });
   } catch (error) {
-    console.error(error.response?.data || error.message);
-
+    console.error(error.message || error);
     res.status(500).json({
       success: false,
-      message: error.response?.data?.message || error.message,
+      message: error.message || "Internal server error",
     });
   }
 });
-
 app.get("/verify/:id", async (req, res) => {
 
   const txId = req.params.id;
