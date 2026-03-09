@@ -36,7 +36,7 @@ const db = admin.firestore();
 
 
 
-const FLW_SECRET_KEY = "FLWSECK-XXXX"; // replace with your actual key
+const FLW_SECRET_KEY = "FLWSECK_TEST-41f568066a3e9d9bfaaedeca9f8e5572-X"; // replace with your actual key
 
 
 app.post("/create-payment", async (req, res) => {
@@ -112,8 +112,6 @@ app.post("/create-payment", async (req, res) => {
     });
   }
 });
-
-
 
 
 
@@ -211,6 +209,7 @@ app.get("/verify/:id", async (req, res) => {
 
   res.json(response.data);
 });
+
 
 app.post("/bank-withdrawal", async (req, res) => {
   try {
