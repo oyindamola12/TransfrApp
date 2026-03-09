@@ -46,6 +46,7 @@ app.get("/ping", (req, res) => {
   res.json({ success: true, message: "Backend is connected!" });
 });
 
+
 app.post("/create-payment", async (req, res) => {
   try {
     const { transaction_id, userId, cardId, firstname, lastname, amount,status } = req.body;
@@ -295,11 +296,10 @@ app.post("/bank-withdrawal", async (req, res) => {
   }
 });
 
-
-
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${process.env.PORT}`);
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
+
 
 
 
