@@ -288,51 +288,173 @@ app.get("/verify/:id", async (req, res) => {
 });
 
 
+// app.post("/bank-withdrawal", async (req, res) => {
+//   try {
+//     const {
+//       amount,
+//       accountNumber,
+//       bankCode,
+//       // narration,
+//     } = req.body;
+
+//     // if (!amount || !accountNumber || !bankCode) {
+//     //   return res.status(400).json({ error: "Missing required fields" });
+//     // }
+
+//     const response = await axios.post(
+//       "https://api.flutterwave.com/v3/transfers",
+//       {
+//         account_bank: bankCode,
+//         account_number: accountNumber,
+//         amount: Number(amount),
+//         currency: "NGN",
+//         narration:"Wallet withdrawal",
+//         reference: `wd-${Date.now()}`,
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.flw_secret_Key}`,
+//           "Content-Type": "application/json",
+//         },
+//       }
+//     );
+
+//     return res.json({
+//       success: true,
+//       message: response.data.message,
+//       data: response.data.data,
+//     });
+
+//   } catch (err) {
+//     console.error(err.response?.data || err.message);
+//     return res.status(500).json({
+//       error: err.response?.data?.message || "Transfer failed",
+//     });
+//   }
+// });
+
+
+
 app.post("/bank-withdrawal", async (req, res) => {
   try {
     const {
       amount,
       accountNumber,
       bankCode,
-      // narration,
+      userId,
+      cardId,
+      firstname,
+      lastname
     } = req.body;
 
-    // if (!amount || !accountNumber || !bankCode) {
+    const amt = Number(amount);
+
+    // if (!userId || !cardId || !amt || !accountNumber || !bankCode) {
     //   return res.status(400).json({ error: "Missing required fields" });
     // }
 
+    const userRef = db.collection("users").doc(userId);
+    const ticketRef = userRef.collection("Cards").doc(cardId);
+    const ticketRef2 = db.collection("Cards").doc(cardId);
+
+    let newBalance = 0;
+
+    // 🔹 Firestore transaction (subtract balance safely)
+    await db.runTransaction(async (tx) => {
+      const cardDoc = await tx.get(ticketRef);
+
+      if (!cardDoc.exists) {
+        throw new Error("Card wallet not found");
+      }
+
+      const currentBalance = cardDoc.data().balance || 0;
+
+      if (currentBalance < amt) {
+        throw new Error("Insufficient balance");
+      }
+
+      newBalance = currentBalance - amt;
+
+      // subtract balance
+      tx.update(ticketRef, { balance: newBalance });
+      tx.update(ticketRef2, { balance: newBalance });
+
+      // create user transaction
+      const txnRef = userRef.collection("Transactions").doc();
+
+      tx.set(txnRef, {
+        amount: amt,
+        balance: newBalance,
+        cardNumber: cardId,
+        status: "TransferToBank",
+        cardType: "wallet",
+        paymentMethod: "bank",
+        firstname,
+        lastname,
+        transactionNo: `wd-${Date.now()}`,
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // global transaction
+      const globalTxn = db.collection("AllTransaction").doc();
+
+      tx.set(globalTxn, {
+        amount: amt,
+        cardType: "wallet",
+        transactionNo: `wd-${Date.now()}`,
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        redeemer: { name: firstname + " " + lastname }
+      });
+
+      // notification
+      tx.set(userRef, {
+        notification: true,
+        inappnotification: true
+      }, { merge: true });
+    });
+
+    // 🔹 initiate Flutterwave transfer
     const response = await axios.post(
       "https://api.flutterwave.com/v3/transfers",
       {
         account_bank: bankCode,
         account_number: accountNumber,
-        amount: Number(amount),
+        amount: amt,
         currency: "NGN",
-        narration:"Wallet withdrawal",
+        narration: "Wallet withdrawal",
         reference: `wd-${Date.now()}`,
+        debit_currency: "NGN"
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.flw_secret_Key}`,
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json"
+        }
       }
     );
 
     return res.json({
       success: true,
-      message: response.data.message,
-      data: response.data.data,
+      message: "Withdrawal initiated",
+      balance: newBalance,
+      data: response.data.data
     });
 
   } catch (err) {
     console.error(err.response?.data || err.message);
+
     return res.status(500).json({
-      error: err.response?.data?.message || "Transfer failed",
+      success: false,
+      error: err.message || "Transfer failed"
     });
   }
 });
 
+
+app.get("/my-ip", async (req, res) => {
+  const response = await axios.get("https://api.ipify.org?format=json");
+  res.json(response.data);
+});
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
