@@ -358,7 +358,7 @@ app.post("/bank-withdrawal", async (req, res) => {
 
     });
 
-    const reference = `wd-${Date.now()}`; // unique withdrawal reference
+    const reference = `wd-${Date.now()}_PMCKDU_1`; // unique withdrawal reference
 
     // 🔹 Initiate transfer with Flutterwave
     const response = await axios.post(
