@@ -13,6 +13,8 @@ require("dotenv").config(); // load .env
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+
+
 // CORS
 const corsOptions = {
   origin: "*", // change to your frontend
@@ -422,6 +424,20 @@ app.post("/bank-withdrawal", async (req, res) => {
 // ================= FLUTTERWAVE WEBHOOK =====================
 app.post("/flutterwave-webhook", async (req, res) => {
   try {
+
+
+const receivedHash = req.headers["verif-hash"]; // sent by Flutterwave
+const secret = process.env.FLW_WEBHOOK_SECRET; // the string you put in the dashboard
+const payload = JSON.stringify(req.body);
+
+const computedHash = crypto
+  .createHmac("sha256", secret)
+  .update(payload)
+  .digest("hex");
+
+if (computedHash !== receivedHash) {
+  return res.status(401).send("Invalid signature");
+}
     const data = req.body;
 
     // Verify event signature if needed (recommended in production)
