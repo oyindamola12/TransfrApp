@@ -489,6 +489,30 @@ if (computedHash !== receivedHash) {
 });
 
 
+// bills 
+
+app.get("/bill-categories", async (req, res) => {
+  try {
+
+    const response = await axios.get(
+      "https://api.flutterwave.com/v3/top-bill-categories?country=NG",
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.flw_secret_Key}`,
+        },
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.response?.data || error.message,
+    });
+
+  }
+});
 
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
