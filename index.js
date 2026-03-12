@@ -75,7 +75,7 @@ app.post("/create-payment", async (req, res) => {
       tx.set(cardRef2, { balance: newBalance }, { merge: true });
 
       // 🔹 Update user notifications
-      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+      tx.update(userRef, { notification: true, inappnotification: true });
 
       // 🔹 Add user transaction log
       const userTxnRef = userRef.collection("Transactions").doc();
