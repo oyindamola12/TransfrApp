@@ -335,10 +335,6 @@ app.post("/bank-withdrawal", async (req, res) => {
     const cardRef = userRef.collection(cardType === "wallet" ? "Cards" : "Merchant").doc(cardId);
     const cardRef2 = db.collection(cardType === "wallet" ? "Cards" : "Merchants").doc(cardId);
 
-
-
-
-
     // 🔹 Firestore transaction (subtract balance safely)
     await db.runTransaction(async (tx) => {
       const cardDoc = await tx.get(cardRef);
@@ -357,7 +353,7 @@ app.post("/bank-withdrawal", async (req, res) => {
 
     });
 
-    const reference = `wd-${Date.now()}_PMCKDU_1`; // unique withdrawal reference
+    const reference = `wd-${Date.now()}`; // unique withdrawal reference
 
     // 🔹 Initiate transfer with Flutterwave
     const response = await axios.post(
@@ -372,7 +368,7 @@ app.post("/bank-withdrawal", async (req, res) => {
       },
       {
         headers: {
-          Authorization: `Bearer ${FLW_SECRET_KEY}`,
+          Authorization: `Bearer ${process.env.flw_secret_Key}`,
           "Content-Type": "application/json",
         },
       }
