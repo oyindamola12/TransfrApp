@@ -325,10 +325,7 @@ app.post("/create-payment-ticket", async (req, res) => {
 
 //   res.sendStatus(200);
 // });
-// app.get("/my-ip", async (req, res) => {
-//   const response = await axios.get("https://api.ipify.org?format=json");
-//   res.json(response.data);
-// });
+
 
 app.post("/bank-withdrawal", async (req, res) => {
   try {
@@ -514,6 +511,11 @@ app.get("/bill-categories", async (req, res) => {
   }
 });
 
+
+app.get("/my-ip", async (req, res) => {
+  const response = await axios.get("https://api.ipify.org?format=json");
+  res.json(response.data);
+});
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
