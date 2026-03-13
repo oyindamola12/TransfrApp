@@ -209,10 +209,11 @@ app.post("/bank-withdrawal", async (req, res) => {
     // Step 1: Validate balance and PIN
     // -------------------------
     const cardDoc = await cardRef.get();
+    const userDoc = await userRef.get();
     if (!cardDoc.exists) throw new Error("Card wallet not found");
 
     const currentBalance = cardDoc.data().balance || 0;
-    if (pin !== cardDoc.data().transferPasscode) throw new Error("Invalid transaction PIN");
+    if (pin !== userDoc.data().transferPasscode) throw new Error("Invalid transaction PIN");
     if (currentBalance < amount) throw new Error("Insufficient balance");
 
     // -------------------------
