@@ -48,7 +48,7 @@ app.get("/ping", (req, res) => {
   res.json({ success: true, message: "Backend is connected!" });
 });
 
-app.post("/create-payment", async (req, res) => {
+app.post("/fund-wallet", async (req, res) => {
   try {
     const { userId, cardId, firstname, lastname, amount, status, transaction_id } = req.body;
 
@@ -110,10 +110,7 @@ app.post("/create-payment", async (req, res) => {
   }
 });
 
-
-
-
-app.post("/create-payment-ticket", async (req, res) => {
+app.post("/fund-ticket", async (req, res) => {
   try {
     const { userId, cardId, firstname, lastname, amount, status, transaction_id } = req.body;
 
@@ -177,8 +174,6 @@ app.post("/create-payment-ticket", async (req, res) => {
   }
 });
 
-
-
 // =========================
 // Initiate Bank Withdrawal
 // =========================
@@ -210,6 +205,7 @@ app.post("/bank-withdrawal", async (req, res) => {
     // -------------------------
     const cardDoc = await cardRef.get();
     const userDoc = await userRef.get();
+
     if (!cardDoc.exists) throw new Error("Card wallet not found");
 
     const currentBalance = cardDoc.data().balance || 0;
@@ -243,6 +239,96 @@ app.post("/bank-withdrawal", async (req, res) => {
     // -------------------------
     // Step 3: Save withdrawal as PENDING
     // -------------------------
+    const withdrawalRef = db.collection("withdrawal").doc(reference);
+    await withdrawalRef.set({
+      userId,
+      cardId,
+      cardType,
+      amount: Number(amount),
+      status: "pending",
+      reference,
+      firstname,
+      lastname,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      flutterwaveData: transferData,
+    });
+
+    res.json({ success: true, message: "Withdrawal initiated and pending", data: transferData });
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Withdrawal failed",
+    });
+  }
+});
+
+app.post("/bank-withdrawalPin", async (req, res) => {
+  try {
+    const {
+      userId,
+      cardId,
+      cardType,
+      amount,
+      bankCode,
+      accountNumber,
+      accountName,
+      pin,
+      firstname,
+      lastname,
+      narration = "Wallet withdrawal",
+    } = req.body;
+
+    // if (!userId || !cardId || !cardType || !amount || !bankCode || !accountNumber || !pin) {
+    //   return res.status(400).json({ success: false, message: "Missing required fields" });
+    // }
+
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef.collection(cardType === "wallet" ? "Cards" : "Merchant").doc(cardId);
+
+    // -------------------------
+    // Step 1: Validate balance and PIN
+    // -------------------------
+    const cardDoc = await cardRef.get();
+    const userDoc = await userRef.get();
+
+    if (!cardDoc.exists) throw new Error("Card wallet not found");
+
+    const currentBalance = cardDoc.data().balance || 0;
+    // if (pin !== userDoc.data().transferPasscode) throw new Error("Invalid transaction PIN");
+    if (currentBalance < amount) throw new Error("Insufficient balance");
+
+    // -------------------------
+    // Step 2: Initiate transfer with Flutterwave
+    // -------------------------
+    const reference = `wd-${Date.now()}`;
+    const response = await axios.post(
+      "https://api.flutterwave.com/v3/transfers",
+      {
+        account_bank: bankCode,
+        account_number: accountNumber,
+        amount: Number(amount),
+        currency: "NGN",
+        narration,
+        reference,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.flw_secret_Key}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const transferData = response.data.data;
+
+    // -------------------------
+    // Step 3: Save withdrawal as PENDING
+    // -------------------------
+
+    
+    await userRef.set({transferPasscode: pin}, { merge: true })
+
     const withdrawalRef = db.collection("withdrawal").doc(reference);
     await withdrawalRef.set({
       userId,
@@ -308,9 +394,582 @@ app.post("/flutterwave-webhook", async (req, res) => {
   }
 });
 
+app.post("/wallet-to-ticket", async (req, res) => {
+  try {
+    const { userId,walletCardId,ticketId,amount,firstname,lastname,transactionNo,fcmToken } = req.body;
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef.collection("tickets").doc(ticketId);
+    const cardRef2 = db.collection("tickets").doc(ticketId);
+    const card = userRef.collection("Cards").doc(walletCardId);
+    const card2 = db.collection("Cards").doc(walletCardId);
+
+    await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
+      const cardDoc = await tx.get(cardRef);
+      const card2Doc = await tx.get(card)
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance + Number(amount);
+
+      const oldBalanceCard = card2Doc.exists ? card2Doc.data().balance || 0 : 0;
+      const newBalanceCard = oldBalanceCard - Number(amount);
+
+      // 🔹 Update balances
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
+
+       tx.set(card, { balance: newBalanceCard }, { merge: true });
+       tx.set(card2, { balance: newBalanceCard }, { merge: true });
+    
+
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // 🔹 Add user transaction log
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+        amount,
+        balance: newBalance,
+        cardNumber: ticketId,
+        status: "ticketFundTransfr",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        cardType: "ticket",
+        paymentMethod: "transfr",
+        firstname,
+        lastname,
+        transactionNo,
+        businessType: "ticket",
+        
+      });
+
+   const userTnRef = userRef.collection("Transactions").doc();
+      tx.set(userTnRef, {
+        amount,
+        balance: newBalanceCard,
+        cardNumber: walletCardId,
+        status: "senderTicket",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        cardType: "wallet",
+        paymentMethod: "transfr",
+        firstname,
+        lastname,
+        transactionNo,
+      });
+
+      
+      // 🔹 Add global transaction log
+      const allTxnRef = db.collection("AllTransaction").doc();
+      tx.set(allTxnRef, {
+        amount,
+        cardType: "tickets",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        redeemer: { name: firstname + " " + lastname },
+        transactionNo,
+      });
+    });
+
+    res.json({ success: true, message: "Payment recorded successfully" });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+app.post("/wallet-to-ticket-Pin", async (req, res) => {
+  try {
+    const { userId,walletCardId,ticketId,amount,firstname,lastname,transactionNo,fcmToken,pin } = req.body;
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef.collection("tickets").doc(ticketId);
+    const cardRef2 = db.collection("tickets").doc(ticketId);
+    const card = userRef.collection("Cards").doc(walletCardId);
+    const card2 = db.collection("Cards").doc(walletCardId);
+
+    await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
+      const cardDoc = await tx.get(cardRef);
+      const card2Doc = await tx.get(card)
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance + Number(amount);
+
+      const oldBalanceCard = card2Doc.exists ? card2Doc.data().balance || 0 : 0;
+      const newBalanceCard = oldBalanceCard - Number(amount);
+
+      // 🔹 Update balances
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
+
+       tx.set(card, { balance: newBalanceCard }, { merge: true });
+       tx.set(card2, { balance: newBalanceCard }, { merge: true });
+       tx.set(userRef, {transferPasscode: pin }, { merge: true });
+
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // 🔹 Add user transaction log
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+        amount,
+        balance: newBalance,
+        cardNumber: ticketId,
+        status: "ticketFundTransfr",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        cardType: "ticket",
+        paymentMethod: "transfr",
+        firstname,
+        lastname,
+        transactionNo,
+        businessType: "ticket",
+        
+      });
+
+   const userTnRef = userRef.collection("Transactions").doc();
+      tx.set(userTnRef, {
+        amount,
+        balance: newBalanceCard,
+        cardNumber: walletCardId,
+        status: "senderTicket",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        cardType: "wallet",
+        paymentMethod: "transfr",
+        firstname,
+        lastname,
+        transactionNo,
+      });
+
+      
+      // 🔹 Add global transaction log
+      const allTxnRef = db.collection("AllTransaction").doc();
+      tx.set(allTxnRef, {
+        amount,
+        cardType: "tickets",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        redeemer: { name: firstname + " " + lastname },
+        transactionNo,
+      });
+    });
+
+    res.json({ success: true, message: "Payment recorded successfully" });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+app.post("/wallet-to-wallet", async (req, res) => {
+  try {
+    const { 
+      userId,
+      cardId,
+      transfrCardNumber,
+      amount,
+      firstname,
+      lastname,
+      transactionNo,
+      fcmToken,
+      cardType,
+      transfrPhoneNumber,
+      transfrAccountFirstName,
+      transfrAccountLastName
+
+     } = req.body;
+
+     if(cardType=== 'wallet'){
+    const userRef = db.collection("users").doc(userId);
+    const transfruserRef = db.collection("users").doc(transfrPhoneNumber);
+    const cardRef = userRef.collection("Cards").doc(cardId);
+    const cardRef2 = db.collection("Cards").doc(cardId);
+    const accoutTosend = transfruserRef.collection("Cards").doc(transfrCardNumber);
+    const accoutTosend2 = db.collection("Cards").doc(transfrCardNumber);
+    //   const card = userRef.collection("Cards").doc(walletCardId);
+    // const card2 = db.collection("Cards").doc(walletCardId);
+
+    await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
+      const cardDoc = await tx.get(cardRef);
+      const accoutTosendDoc = await tx.get(accoutTosend);
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance - Number(amount);
+
+      const oldBalanceCard = accoutTosendDoc.exists ? accoutTosendDoc.data().balance || 0 : 0;
+      const newBalanceCard = oldBalanceCard + Number(amount);
+
+      // 🔹 Update balances
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
+
+       tx.set(accoutTosend, { balance: newBalanceCard }, { merge: true });
+      tx.set(accoutTosend2, { balance: newBalanceCard }, { merge: true });
+
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // 🔹 Add user transaction log
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+    
+   balance: newBalance,
+cardNumber: cardId,
+amount,
+date:  admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'sender',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'wallet',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+        
+      });
+
+ const transfruserRefTx = transfruserRef.collection("Transactions").doc();
+      tx.set(transfruserRefTx, {
+    
+   balance: newBalanceCard,
+cardNumber: cardId,
+amount,
+date:admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'reciever',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'wallet',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+
+        
+      });
+
+      // 🔹 Add global transaction log
+  const allTxnRef = db.collection("AllTransaction").doc();
+tx.set(allTxnRef, {
+       amount,
+date: admin.firestore.FieldValue.serverTimestamp(),
+cardType: 'wallet',
+paymentMethod:'transfer',
+sender: {
+firstname: firstname,
+lastname: lastname,
+},
+reciever: {
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+},
+transactionNo: transactionNo
+      });
+    });
+     } else{
+
+
+    const userRef = db.collection("users").doc(userId);
+    const transfruserRef = db.collection("users").doc(transfrPhoneNumber);
+    const cardRef = userRef.collection("Cards").doc(cardId);
+    const cardRef2 = db.collection("Cards").doc(cardId);
+    const accoutTosend = transfruserRef.collection("Merchant").doc(transfrCardNumber);
+    const accoutTosend2 = db.collection("Merchants").doc(transfrCardNumber);
+
+
+    await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
+      const cardDoc = await tx.get(cardRef);
+      const accoutTosendDoc = await tx.get(accoutTosend);
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance + Number(amount);
+
+      const oldBalanceCard = accoutTosendDoc.exists ? accoutTosendDoc.data().balance || 0 : 0;
+      const newBalanceCard = oldBalanceCard - Number(amount);
+
+      // 🔹 Update balances
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
+
+       tx.set(accoutTosend, { balance: newBalanceCard }, { merge: true });
+      tx.set(accoutTosend2, { balance: newBalanceCard }, { merge: true });
+
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // 🔹 Add user transaction log
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+    
+   balance: newBalance,
+cardNumber: cardId,
+amount,
+date:  admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'Merchant',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'Merchant',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+        
+      });
+
+ const transfruserRefTx = transfruserRef.collection("Transactions").doc();
+      tx.set(transfruserRefTx, {
+    
+   balance: newBalanceCard,
+cardNumber: transfrCardNumber,
+amount,
+date:admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'sender',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'wallet',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+
+        
+      });
+
+      // 🔹 Add global transaction log
+  const allTxnRef = db.collection("AllTransaction").doc();
+tx.set(allTxnRef, {
+       amount,
+date: admin.firestore.FieldValue.serverTimestamp(),
+cardType: 'Merchant',
+paymentMethod:'transfer',
+sender: {
+firstname: firstname,
+lastname: lastname,
+},
+reciever: {
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+},
+transactionNo: transactionNo
+      });
+    });
+     
+
+     }
+
+
+    res.json({ success: true, message: "Payment recorded successfully" });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+
+
+app.post("/wallet-to-wallet-Pin", async (req, res) => {
+  try {
+    const { 
+      userId,
+      cardId,
+      transfrCardNumber,
+      amount,
+      firstname,
+      lastname,
+      transactionNo,
+      fcmToken,
+      cardType,
+      transfrPhoneNumber,
+      transfrAccountFirstName,
+      transfrAccountLastName,
+      pin
+
+     } = req.body;
+
+     if(cardType=== 'wallet'){
+    const userRef = db.collection("users").doc(userId);
+    const transfruserRef = db.collection("users").doc(transfrPhoneNumber);
+    const cardRef = userRef.collection("Cards").doc(cardId);
+    const cardRef2 = db.collection("Cards").doc(cardId);
+    const accoutTosend = transfruserRef.collection("Cards").doc(transfrCardNumber);
+    const accoutTosend2 = db.collection("Cards").doc(transfrCardNumber);
+    //   const card = userRef.collection("Cards").doc(walletCardId);
+    // const card2 = db.collection("Cards").doc(walletCardId);
+
+    await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
+      const cardDoc = await tx.get(cardRef);
+      const accoutTosendDoc = await tx.get(accoutTosend);
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance - Number(amount);
+
+      const oldBalanceCard = accoutTosendDoc.exists ? accoutTosendDoc.data().balance || 0 : 0;
+      const newBalanceCard = oldBalanceCard + Number(amount);
+
+      // 🔹 Update balances
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
+
+       tx.set(accoutTosend, { balance: newBalanceCard }, { merge: true });
+      tx.set(accoutTosend2, { balance: newBalanceCard }, { merge: true });
+           tx.set(userRef, {transferPasscode: pin }, { merge: true });
+
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // 🔹 Add user transaction log
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+    
+   balance: newBalance,
+cardNumber: cardId,
+amount,
+date:  admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'sender',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'wallet',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+        
+      });
+
+ const transfruserRefTx = transfruserRef.collection("Transactions").doc();
+      tx.set(transfruserRefTx, {
+    
+   balance: newBalanceCard,
+cardNumber: cardId,
+amount,
+date:admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'reciever',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'wallet',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+
+        
+      });
+
+      // 🔹 Add global transaction log
+  const allTxnRef = db.collection("AllTransaction").doc();
+tx.set(allTxnRef, {
+       amount,
+date: admin.firestore.FieldValue.serverTimestamp(),
+cardType: 'wallet',
+paymentMethod:'transfer',
+sender: {
+firstname: firstname,
+lastname: lastname,
+},
+reciever: {
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+},
+transactionNo: transactionNo
+      });
+    });
+     } else{
+
+
+    const userRef = db.collection("users").doc(userId);
+    const transfruserRef = db.collection("users").doc(transfrPhoneNumber);
+    const cardRef = userRef.collection("Cards").doc(cardId);
+    const cardRef2 = db.collection("Cards").doc(cardId);
+    const accoutTosend = transfruserRef.collection("Merchant").doc(transfrCardNumber);
+    const accoutTosend2 = db.collection("Merchants").doc(transfrCardNumber);
+
+
+    await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
+      const cardDoc = await tx.get(cardRef);
+      const accoutTosendDoc = await tx.get(accoutTosend);
+      const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance + Number(amount);
+
+      const oldBalanceCard = accoutTosendDoc.exists ? accoutTosendDoc.data().balance || 0 : 0;
+      const newBalanceCard = oldBalanceCard - Number(amount);
+
+      // 🔹 Update balances
+      tx.set(cardRef, { balance: newBalance }, { merge: true });
+      tx.set(cardRef2, { balance: newBalance }, { merge: true });
+
+       tx.set(accoutTosend, { balance: newBalanceCard }, { merge: true });
+      tx.set(accoutTosend2, { balance: newBalanceCard }, { merge: true });
+     tx.set(userRef, {transferPasscode: pin }, { merge: true });
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // 🔹 Add user transaction log
+      const userTxnRef = userRef.collection("Transactions").doc();
+      tx.set(userTxnRef, {
+    
+   balance: newBalance,
+cardNumber: cardId,
+amount,
+date:  admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'Merchant',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'Merchant',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+        
+      });
+
+ const transfruserRefTx = transfruserRef.collection("Transactions").doc();
+      tx.set(transfruserRefTx, {
+    
+   balance: newBalanceCard,
+cardNumber: transfrCardNumber,
+amount,
+date:admin.firestore.FieldValue.serverTimestamp(),
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+status: 'sender',
+receiverCardNumber: transfrCardNumber,
+transactionNo: transactionNo,
+cardType: 'wallet',
+paymentMethod: 'transfer',
+transactionNo: transactionNo,
+
+        
+      });
+
+      // 🔹 Add global transaction log
+  const allTxnRef = db.collection("AllTransaction").doc();
+tx.set(allTxnRef, {
+       amount,
+date: admin.firestore.FieldValue.serverTimestamp(),
+cardType: 'Merchant',
+paymentMethod:'transfer',
+sender: {
+firstname: firstname,
+lastname: lastname,
+},
+reciever: {
+firstname: transfrAccountFirstName,
+lastname: transfrAccountLastName,
+},
+transactionNo: transactionNo
+      });
+    });
+     
+
+     }
+
+
+    res.json({ success: true, message: "Payment recorded successfully" });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+
+
 // =========================
 // Check withdrawal status (optional polling)
 // =========================
+
 app.get("/withdrawal-status/:reference", async (req, res) => {
   try {
     const docRef = db.collection("withdrawal").doc(req.params.reference);
@@ -345,7 +1004,6 @@ app.get("/bill-categories", async (req, res) => {
 
   }
 });
-
 
 app.get("/my-ip", async (req, res) => {
   const response = await axios.get("https://api.ipify.org?format=json");
