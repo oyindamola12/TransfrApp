@@ -661,7 +661,7 @@ transactionNo: transactionNo
     res.json({ success: true, message: "Payment successful" });
   } catch (error) {
     console.error(error.message);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    res.status(500).json({ success: false, message:+error.message});
   }
 });
 
