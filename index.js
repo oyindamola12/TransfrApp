@@ -674,16 +674,8 @@ app.post("/flutterwave-webhook", async (req, res) => {
 app.post("/wallet-to-wallet", async (req, res) => {
   try {
 
-    let {
-      userId,
-      cardId,
-      cardTofund,
-      amount,
-      firstname,
-      lastname,
-      transactionNo,
-      // pin
-    } = req.body;
+    
+  const{ userId, cardId, cardTofund, amount, firstname, lastname, transactionNo, } = req.body;
 
     // ✅ Convert amount safely
     amount = Number(amount);
@@ -764,7 +756,8 @@ app.post("/wallet-to-wallet", async (req, res) => {
       
 
       // ✅ Sender transaction
-      tx.set(userRef.collection("Transactions").doc(transactionNo), {
+        const senderRex = userRef.collection("Transactions").doc();
+      tx.set(senderRex, {
         balance: newSenderBalance,
         cardNumber: cardId,
         amount,
@@ -778,7 +771,8 @@ app.post("/wallet-to-wallet", async (req, res) => {
       });
 
       // ✅ Receiver transaction
-      tx.set(userRef.collection("Transactions").doc(transactionNo), {
+      const receiverRex = userRef.collection("Transactions").doc();
+      tx.set(receiverRex,{
         balance: newReceiverBalance,
         cardNumber: cardTofund,
         amount,
@@ -823,10 +817,7 @@ app.post("/wallet-to-wallet", async (req, res) => {
 app.post("/wallet-to-ticket", async (req, res) => {
   try {
 
-    let {
-     userId,walletCardId,ticketId,amount,firstname,lastname,transactionNo,fcmToken 
-      // pin
-    } = req.body;
+    const {userId,walletCardId,ticketId,amount,firstname,lastname,transactionNo,fcmToken } = req.body;
 
     // ✅ Convert amount safely
     amount = Number(amount);
@@ -893,9 +884,9 @@ app.post("/wallet-to-ticket", async (req, res) => {
       tx.update(receiverGlobal, { balance: newReceiverBalance });
       tx.set(userRef, { notification: true, inappnotification: true },{ merge: true });
       
-
-      // ✅ Sender transaction
-      tx.set(userRef.collection("Transactions").doc(transactionNo), {
+  // ✅ Sender transaction
+      const receiverRex = userRef.collection("Transactions").doc();
+      tx.set(receiverRex,{
        amount,
         balance: newReceiverBalance,
         cardNumber: ticketId,
@@ -910,8 +901,8 @@ app.post("/wallet-to-ticket", async (req, res) => {
         
       });
 
-   const userTnRef = userRef.collection("Transactions").doc(transactionNo);
-      tx.set(userTnRef, {
+   const senderRex = userRef.collection("Transactions").doc();
+      tx.set(senderRex, {
         amount,
         balance: newSenderBalance,
         cardNumber: walletCardId,
@@ -928,15 +919,17 @@ app.post("/wallet-to-ticket", async (req, res) => {
     
 
       // ✅ Global transaction (id = transactionNo)
-      tx.set(txnRef, {
-        amount,
+     
+
+        const allTxnRef = db.collection("AllTransaction").doc();
+      tx.set(allTxnRef, {
+          amount,
         transactionNo,
         paymentMethod: "transfer",
         sender: { firstname, lastname },
         receiver: { firstname, lastname },
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        date: admin.firestore.FieldValue.serverTimestamp()
       });
-
     });
 
     return res.json({
