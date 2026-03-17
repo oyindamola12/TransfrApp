@@ -760,6 +760,8 @@ app.post("/wallet-to-wallet", async (req, res) => {
 
       tx.update(receiverCardRef, { balance: newReceiverBalance });
       tx.update(receiverGlobal, { balance: newReceiverBalance });
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+      
 
       // ✅ Sender transaction
       tx.set(userRef.collection("Transactions").doc(), {
