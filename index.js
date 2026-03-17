@@ -494,7 +494,7 @@ app.post("/wallet-to-wallet", async (req, res) => {
       tx.set(senderRex, {
         amount,
         balance: newSenderBalance,
-        cardNumber: walletCardId,
+        cardNumber: cardId,
         status: "sender",
         date: admin.firestore.FieldValue.serverTimestamp(),
         cardType: "wallet",
