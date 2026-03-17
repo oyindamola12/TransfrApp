@@ -433,12 +433,12 @@ app.post("/wallet-to-wallet", async (req, res) => {
     const txnRef = db.collection("AllTransaction").doc(transactionNo);
     const txnDoc = await txnRef.get();
 
-    if (txnDoc.exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate transaction detected"
-      });
-    }
+    // if (txnDoc.exists) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Duplicate transaction detected"
+    //   });
+    // }
 
     await db.runTransaction(async (tx) => {
 
@@ -478,7 +478,7 @@ app.post("/wallet-to-wallet", async (req, res) => {
       tx.set(receiverRex,{
        amount,
         balance: newReceiverBalance,
-        cardNumber: ticketId,
+        cardNumber: cardTofund,
         status: "reciever",
         date: admin.firestore.FieldValue.serverTimestamp(),
         cardType: "wallet",
