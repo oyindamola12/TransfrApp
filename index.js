@@ -675,7 +675,7 @@ app.post("/wallet-to-wallet", async (req, res) => {
   try {
 
     
-  const{ userId, cardId, cardTofund, amount, firstname, lastname, transactionNo, } = req.body;
+let{ userId, cardId, cardTofund, amount, firstname, lastname, transactionNo, } = req.body;
 
     // ✅ Convert amount safely
     amount = Number(amount);
@@ -817,7 +817,7 @@ app.post("/wallet-to-wallet", async (req, res) => {
 app.post("/wallet-to-ticket", async (req, res) => {
   try {
 
-    const {userId,walletCardId,ticketId,amount,firstname,lastname,transactionNo,fcmToken } = req.body;
+    let {userId,walletCardId,ticketId,amount,firstname,lastname,transactionNo,fcmToken } = req.body;
 
     // ✅ Convert amount safely
     amount = Number(amount);
