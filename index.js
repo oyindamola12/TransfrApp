@@ -6,6 +6,7 @@ const cron = require("node-cron");
 const FCM = require("fcm-node");
 const admin = require("firebase-admin");
 const cors = require("cors");
+const Flutterwave = require('flutterwave-node-v3')
 const crypto = require("crypto");
 const CryptoJS = require( "crypto-js");
 require("dotenv").config(); // load .env
@@ -13,7 +14,9 @@ require("dotenv").config(); // load .env
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
+const flw = new Flutterwave(
+  process.env.flw_secret_Key
+);
 
 // CORS
 const corsOptions = {
@@ -177,9 +180,97 @@ app.post("/fund-ticket", async (req, res) => {
 // =========================
 // Initiate Bank Withdrawal
 // =========================
+// app.post("/bank-withdrawal", async (req, res) => {
+//   try {
+//     const {
+//       userId,
+//       cardId,
+//       cardType,
+//       amount,
+//       bankCode,
+//       accountNumber,
+//       accountName,
+//       pin,
+//       firstname,
+//       lastname,
+//       narration = "Wallet withdrawal",
+//     } = req.body;
+
+//     // if (!userId || !cardId || !cardType || !amount || !bankCode || !accountNumber || !pin) {
+//     //   return res.status(400).json({ success: false, message: "Missing required fields" });
+//     // }
+
+//     const userRef = db.collection("users").doc(userId);
+//     const cardRef = userRef.collection(cardType === "wallet" ? "Cards" : "Merchant").doc(cardId);
+
+//     // -------------------------
+//     // Step 1: Validate balance and PIN
+//     // -------------------------
+//     const cardDoc = await cardRef.get();
+//     const userDoc = await userRef.get();
+
+//     if (!cardDoc.exists) throw new Error("Card wallet not found");
+
+//     const currentBalance = cardDoc.data().balance || 0;
+//     if (pin !== userDoc.data().transferPasscode) throw new Error("Invalid transaction PIN");
+//     if (currentBalance < amount) throw new Error("Insufficient balance");
+
+//     // -------------------------
+//     // Step 2: Initiate transfer with Flutterwave
+//     // -------------------------
+//     const reference = `wd-${Date.now()}`;
+//     const response = await axios.post(
+//       "https://api.flutterwave.com/v3/transfers",
+//       {
+//         account_bank: bankCode,
+//         account_number: accountNumber,
+//         amount: Number(amount),
+//         currency: "NGN",
+//         narration,
+//         reference,
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.flw_secret_Key}`,
+//           "Content-Type": "application/json",
+//         },
+//       }
+//     );
+
+//     const transferData = response.data.data;
+
+//     // -------------------------
+//     // Step 3: Save withdrawal as PENDING
+//     // -------------------------
+//     const withdrawalRef = db.collection("withdrawal").doc(reference);
+//     await withdrawalRef.set({
+//       userId,
+//       cardId,
+//       cardType,
+//       amount: Number(amount),
+//       status: "pending",
+//       reference,
+//       firstname,
+//       lastname,
+//       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       flutterwaveData: transferData,
+//     });
+
+//     res.json({ success: true, message: "Withdrawal initiated and pending", data: transferData });
+//   } catch (error) {
+//     console.error(error.response?.data || error.message);
+//     res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Withdrawal failed",
+//     });
+//   }
+// });
+
+
 app.post("/bank-withdrawal", async (req, res) => {
   try {
-    const {
+
+    let {
       userId,
       cardId,
       cardType,
@@ -193,35 +284,103 @@ app.post("/bank-withdrawal", async (req, res) => {
       narration = "Wallet withdrawal",
     } = req.body;
 
-    // if (!userId || !cardId || !cardType || !amount || !bankCode || !accountNumber || !pin) {
-    //   return res.status(400).json({ success: false, message: "Missing required fields" });
-    // }
+    // ✅ Convert amount
+    amount = Number(amount);
+
+    // ✅ Validate input
+    if (!userId || !cardId || !amount || !bankCode || !accountNumber || !pin) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields"
+      });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount"
+      });
+    }
 
     const userRef = db.collection("users").doc(userId);
-    const cardRef = userRef.collection(cardType === "wallet" ? "Cards" : "Merchant").doc(cardId);
+    const cardRef = userRef
+      .collection(cardType === "wallet" ? "Cards" : "Merchant")
+      .doc(cardId);
+
+    const reference = `wd-${Date.now()}_PMCKDU_1`;
+
+    // ✅ Prevent duplicate reference
+    const existing = await db.collection("withdrawal").doc(reference).get();
+    if (existing.exists) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate transaction"
+      });
+    }
 
     // -------------------------
-    // Step 1: Validate balance and PIN
+    // 🔒 STEP 1: LOCK FUNDS (TRANSACTION)
     // -------------------------
-    const cardDoc = await cardRef.get();
-    const userDoc = await userRef.get();
+    await db.runTransaction(async (tx) => {
 
-    if (!cardDoc.exists) throw new Error("Card wallet not found");
+      const cardDoc = await tx.get(cardRef);
+      const userDoc = await tx.get(userRef);
 
-    const currentBalance = cardDoc.data().balance || 0;
-    if (pin !== userDoc.data().transferPasscode) throw new Error("Invalid transaction PIN");
-    if (currentBalance < amount) throw new Error("Insufficient balance");
+      if (!cardDoc.exists) throw new Error("Wallet not found");
 
+      const currentBalance = Number(cardDoc.data().balance || 0);
+
+      if (pin !== userDoc.data().transferPasscode) {
+        throw new Error("Invalid transaction PIN");
+      }
+
+      if (currentBalance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      const newBalance = currentBalance - amount;
+
+      // 🔒 Deduct immediately (LOCK)
+      tx.update(cardRef, { balance: newBalance });
+
+      // 🔒 Save pending withdrawal
+      tx.set(db.collection("withdrawal").doc(reference), {
+        userId,
+        cardId,
+        cardType,
+        amount,
+        status: "pending",
+        reference,
+        firstname,
+        lastname,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+        tx.set(userRef.collection("withdrawal").doc(reference), {
+        userId,
+        cardId,
+        cardType,
+        amount,
+        status: "pending",
+        reference,
+        firstname,
+        lastname,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+    });
+
+    
+    
     // -------------------------
-    // Step 2: Initiate transfer with Flutterwave
+    // 💸 STEP 2: CALL FLUTTERWAVE
     // -------------------------
-    const reference = `wd-${Date.now()}`;
     const response = await axios.post(
       "https://api.flutterwave.com/v3/transfers",
       {
         account_bank: bankCode,
         account_number: accountNumber,
-        amount: Number(amount),
+        amount,
         currency: "NGN",
         narration,
         reference,
@@ -229,7 +388,6 @@ app.post("/bank-withdrawal", async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${process.env.flw_secret_Key}`,
-          "Content-Type": "application/json",
         },
       }
     );
@@ -237,32 +395,30 @@ app.post("/bank-withdrawal", async (req, res) => {
     const transferData = response.data.data;
 
     // -------------------------
-    // Step 3: Save withdrawal as PENDING
+    // ✅ STEP 3: UPDATE WITHDRAWAL
     // -------------------------
-    const withdrawalRef = db.collection("withdrawal").doc(reference);
-    await withdrawalRef.set({
-      userId,
-      cardId,
-      cardType,
-      amount: Number(amount),
+    await db.collection("withdrawal").doc(reference).update({
       status: "pending",
-      reference,
-      firstname,
-      lastname,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      flutterwaveData: transferData,
+      flutterwaveData: transferData
     });
 
-    res.json({ success: true, message: "Withdrawal initiated and pending", data: transferData });
-  } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(500).json({
-      success: false,
-      message: error.response?.data?.message || error.message || "Withdrawal failed",
+    return res.json({
+      success: true,
+      message: "Withdrawal initiated",
+      data: transferData
     });
+
+  } catch (error) {
+
+    console.error("Withdrawal Error:", error.response?.data || error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Withdrawal failed"
+    });
+
   }
 });
-
 app.post("/bank-withdrawalPin", async (req, res) => {
   try {
     const {
