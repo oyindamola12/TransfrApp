@@ -432,7 +432,7 @@ app.post("/bank-withdrawalPin", async (req, res) => {
       pin,
       firstname,
       lastname,
-      narration = "Wallet withdrawal",
+     
     } = req.body;
 
     // if (!userId || !cardId || !cardType || !amount || !bankCode || !accountNumber || !pin) {
@@ -465,7 +465,7 @@ app.post("/bank-withdrawalPin", async (req, res) => {
         account_number: accountNumber,
         amount: Number(amount),
         currency: "NGN",
-        narration,
+        narration:"Wallet withdrawal",
         reference,
       },
       {
