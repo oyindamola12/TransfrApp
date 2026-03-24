@@ -281,7 +281,7 @@ app.post("/bank-withdrawal", async (req, res) => {
       pin,
       firstname,
       lastname,
-      narration = "Wallet withdrawal",
+ 
     } = req.body;
 
     // ✅ Convert amount
@@ -382,7 +382,7 @@ app.post("/bank-withdrawal", async (req, res) => {
         account_number: accountNumber,
         amount,
         currency: "NGN",
-        narration,
+     
         reference,
       },
       {
@@ -829,7 +829,13 @@ app.post("/wallet-to-ticket", async (req, res) => {
   }
 });
 
-
+axios.get("https://api.flutterwave.com/v3/verify-ip", {
+  headers: {
+  Authorization: `Bearer ${process.env.flw_secret_Key}`,
+  }
+}).then(res => {
+  console.log(res.data);
+});
 
 app.get("/withdrawal-status/:reference", async (req, res) => {
   try {
