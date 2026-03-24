@@ -6,17 +6,15 @@ const cron = require("node-cron");
 const FCM = require("fcm-node");
 const admin = require("firebase-admin");
 const cors = require("cors");
-const Flutterwave = require('flutterwave-node-v3')
+
 const crypto = require("crypto");
 const CryptoJS = require( "crypto-js");
 require("dotenv").config(); // load .env
-
+const Flutterwave = require('flutterwave-node-v3')
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const flw = new Flutterwave(
-  process.env.flw_secret_Key
-);
+
 
 // CORS
 const corsOptions = {
@@ -231,7 +229,7 @@ app.post("/fund-ticket", async (req, res) => {
 //       },
 //       {
 //         headers: {
-//           Authorization: `Bearer ${process.env.flw_secret_Key}`,
+//           Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
 //           "Content-Type": "application/json",
 //         },
 //       }
@@ -387,7 +385,7 @@ app.post("/bank-withdrawal", async (req, res) => {
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.flw_secret_Key}`,
+          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
         },
       }
     );
@@ -470,7 +468,7 @@ app.post("/bank-withdrawalPin", async (req, res) => {
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.flw_secret_Key}`,
+          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
       }
@@ -838,7 +836,7 @@ app.get("/check-ip", async (req, res) => {
       "https://api.flutterwave.com/v3/verify-ip",
       {
         headers: {
-          Authorization: `Bearer ${process.env.flw_secret_Key}`
+          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`
         }
       }
     );
@@ -869,7 +867,7 @@ app.get("/bill-categories", async (req, res) => {
       "https://api.flutterwave.com/v3/top-bill-categories?country=NG",
       {
         headers: {
-          Authorization: `Bearer ${process.env.flw_secret_Key}`,
+          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
         },
       }
     );
