@@ -829,14 +829,27 @@ app.post("/wallet-to-ticket", async (req, res) => {
   }
 });
 
-axios.get("https://api.flutterwave.com/v3/verify-ip", {
-  headers: {
-  Authorization: `Bearer ${process.env.flw_secret_Key}`,
-  }
-}).then(res => {
-  console.log(res.data);
-});
 
+
+app.get("/check-ip", async (req, res) => {
+  try {
+
+    const response = await axios.get(
+      "https://api.flutterwave.com/v3/verify-ip",
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.flw_secret_Key}`
+        }
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    console.log(error.response?.data || error.message);
+    res.status(500).json(error.response?.data || { error: error.message });
+  }
+});
 app.get("/withdrawal-status/:reference", async (req, res) => {
   try {
     const docRef = db.collection("withdrawal").doc(req.params.reference);
