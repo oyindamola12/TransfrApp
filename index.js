@@ -277,8 +277,7 @@ app.post("/bank-withdrawal", async (req, res) => {
       accountNumber,
       accountName,
       pin,
-      firstname,
-      lastname,
+     
  
     } = req.body;
 
@@ -349,8 +348,8 @@ app.post("/bank-withdrawal", async (req, res) => {
         amount,
         status: "pending",
         reference,
-        firstname,
-        lastname,
+        firstname:accountName,
+        lastname:'',
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
@@ -361,18 +360,14 @@ app.post("/bank-withdrawal", async (req, res) => {
         amount,
         status: "pending",
         reference,
-        firstname,
-        lastname,
+        firstname:accountName,
+        lastname:'',
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
     });
 
-    
-    
-    // -------------------------
-    // 💸 STEP 2: CALL FLUTTERWAVE
-    // -------------------------
+  
     const response = await axios.post(
       "https://api.flutterwave.com/v3/transfers",
       {
@@ -380,7 +375,6 @@ app.post("/bank-withdrawal", async (req, res) => {
         account_number: accountNumber,
         amount,
         currency: "NGN",
-     
         reference,
       },
       {
