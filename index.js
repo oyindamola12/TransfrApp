@@ -341,26 +341,26 @@ app.post("/bank-withdrawal", async (req, res) => {
 
     amount = Number(amount);
 
-    if (!userId || !cardId || !amount || !bankCode || !accountNumber || !pin) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields"
-      });
-    }
+    // if (!userId || !cardId || !amount || !bankCode || !accountNumber || !pin) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Missing required fields"
+    //   });
+    // }
 
-    if (amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid amount"
-      });
-    }
+    // if (amount <= 0) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Invalid amount"
+    //   });
+    // }
 
     const userRef = db.collection("users").doc(userId);
     const cardRef = userRef
       .collection(cardType === "wallet" ? "Cards" : "Merchant")
       .doc(cardId);
 
-    const reference = `wd-${Date.now()}_PMCKDU_1`;
+    const reference = `wd-${Date.now()}`;
 
     // =========================
     // 🔒 STEP 1: LOCK FUNDS + CREATE TRANSACTION
@@ -401,6 +401,19 @@ app.post("/bank-withdrawal", async (req, res) => {
         date: admin.firestore.FieldValue.serverTimestamp()
       });
 
+         tx.set(userRef.collection("withdrawal").doc(reference), {
+        userId,
+        cardId,
+        cardType,
+        amount,
+        status: "pending",
+        reference,
+        accountName,
+        bankCode,
+        accountNumber,
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
+
       // 🔒 Save transaction
       const txnRef = userRef.collection("Transactions").doc();
       tx.set(txnRef, {
@@ -418,18 +431,6 @@ app.post("/bank-withdrawal", async (req, res) => {
           bankCode
         },
 
-        // // balance: upadateBal,
-// // cardNumber: selectedItem,
-// // amount: add,
-// // date: timeStampDate,
-// // firstname: transfrAccountFirstName,
-// // lastname: transfrAccountLastName,
-// // status: 'sender',
-// // receiverCardNumber: transfrCardNumber,
-// // transactionNo: transactionNo,
-// // cardType: 'wallet',
-// // paymentMethod: 'transfer',
-// // transactionNo: transactionNo,
 
         meta: {
           network: "flutterwave",
@@ -535,7 +536,7 @@ app.post("/bank-withdrawalPin", async (req, res) => {
       .collection(cardType === "wallet" ? "Cards" : "Merchant")
       .doc(cardId);
 
-    const reference = `wd-${Date.now()}_PMCKDU_1`;
+    const reference = `wd-${Date.now()}`;
 
     // ✅ Prevent duplicate reference
     const existing = await db.collection("withdrawal").doc(reference).get();
@@ -686,13 +687,10 @@ app.post("/flutterwave-webhook", async (req, res) => {
 
     const hash = req.headers["verif-hash"];
 
-    // if (hash !== process.env.FLW_WEBHOOK_SECRET) {
-    //   return res.status(401).send("Unauthorized");
-    // }
 
     const event = req.body;
 
-    console.log(event);
+    console.log("WEBHOOK RECEIVED:", req.body);
     if (event.event === "transfer.completed") {
 
       const data = event.data;
