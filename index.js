@@ -727,7 +727,7 @@ app.post("/flutterwave-webhook", async (req, res) => {
       if (data.status === "SUCCESSFUL") {
 
         await withdrawalRef.update({
-          status: "successful",
+          status: data.status,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -757,7 +757,7 @@ app.post("/flutterwave-webhook", async (req, res) => {
 
           // ❌ Update withdrawal
           tx.update(withdrawalRef, {
-            status: "failed",
+            status: data.status ,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
 
