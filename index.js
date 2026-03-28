@@ -175,9 +175,7 @@ app.post("/fund-ticket", async (req, res) => {
   }
 });
 
-// =========================
-// Initiate Bank Withdrawal
-// =========================
+
 
 // app.post("/bank-withdrawal", async (req, res) => {
 //   try {
@@ -705,6 +703,12 @@ app.post("/fund-ticket", async (req, res) => {
 //     res.sendStatus(500);
 //   }
 // });
+
+
+// =========================
+// Initiate Bank Withdrawal
+// =========================
+
 
 app.post("/bank-withdrawal", async (req, res) => {
   try {
