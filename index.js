@@ -850,7 +850,7 @@ app.post("/flutterwave-webhook", async (req, res) => {
 
     return res.sendStatus(200);
   } catch (err) {
-    console.log("WEBHOOK ERROR:", err.message);
+    console.log("WEBHOOK ERROR:");
     return res.sendStatus(500);
   }
 });
