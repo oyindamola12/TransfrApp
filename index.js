@@ -687,6 +687,9 @@ app.post("/flutterwave-webhook", async (req, res) => {
 
     const hash = req.headers["verif-hash"];
 
+    if (hash !== process.env.FLW_WEBHOOK_SECRET) {
+      return res.status(401).send("Unauthorized");
+    }
 
     const event = req.body;
 
@@ -727,7 +730,7 @@ app.post("/flutterwave-webhook", async (req, res) => {
       if (data.status === "SUCCESSFUL") {
 
         await withdrawalRef.update({
-          status: data.status,
+          status: "successful",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -757,7 +760,7 @@ app.post("/flutterwave-webhook", async (req, res) => {
 
           // ❌ Update withdrawal
           tx.update(withdrawalRef, {
-            status: data.status ,
+            status: "failed",
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
 
