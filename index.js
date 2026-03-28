@@ -14,7 +14,10 @@ const { type } = require("os");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
+const flw = new Flutterwave(
+  process.env.FLW_PUBLIC_KEY,
+  process.env.FLW_SECRET_KEY
+);
 
 // CORS
 const corsOptions = {
@@ -325,240 +328,240 @@ app.post("/fund-ticket", async (req, res) => {
 // });
 
 
-app.post("/bank-withdrawal", async (req, res) => {
-  try {
-    let {
-      userId,
-      cardId,
-      cardType,
-      amount,
-      bankCode,
-      accountNumber,
-      accountName,
-      pin,
-    } = req.body;
+// app.post("/bank-withdrawal", async (req, res) => {
+//   try {
+//     let {
+//       userId,
+//       cardId,
+//       cardType,
+//       amount,
+//       bankCode,
+//       accountNumber,
+//       accountName,
+//       pin,
+//     } = req.body;
 
-    amount = Number(amount);
+//     amount = Number(amount);
 
-    if (!userId || !cardId || !amount || !bankCode || !accountNumber || !pin) {
-      return res.status(400).json({ success: false, message: "Missing fields" });
-    }
+//     if (!userId || !cardId || !amount || !bankCode || !accountNumber || !pin) {
+//       return res.status(400).json({ success: false, message: "Missing fields" });
+//     }
 
-    const userRef = db.collection("users").doc(userId);
-    const cardRef = userRef.collection(cardType === "wallet" ? "Cards" : "Merchant").doc(cardId);
+//     const userRef = db.collection("users").doc(userId);
+//     const cardRef = userRef.collection(cardType === "wallet" ? "Cards" : "Merchant").doc(cardId);
 
-    const reference = `wd-${Date.now()}`;
+//     const reference = `wd-${Date.now()}`;
 
-    await db.runTransaction(async (tx) => {
-      const userDoc = await tx.get(userRef);
-      const cardDoc = await tx.get(cardRef);
+//     await db.runTransaction(async (tx) => {
+//       const userDoc = await tx.get(userRef);
+//       const cardDoc = await tx.get(cardRef);
 
-      if (!cardDoc.exists) throw new Error("Wallet not found");
+//       if (!cardDoc.exists) throw new Error("Wallet not found");
 
-      if (pin !== userDoc.data().transferPasscode) {
-        throw new Error("Invalid PIN");
-      }
+//       if (pin !== userDoc.data().transferPasscode) {
+//         throw new Error("Invalid PIN");
+//       }
 
-      const balance = Number(cardDoc.data().balance || 0);
+//       const balance = Number(cardDoc.data().balance || 0);
 
-      if (balance < amount) {
-        throw new Error("Insufficient balance");
-      }
+//       if (balance < amount) {
+//         throw new Error("Insufficient balance");
+//       }
 
-      // 🔒 LOCK FUNDS ONLY
-      tx.update(cardRef, {
-        lockedBalance: (cardDoc.data().lockedBalance || 0) + amount
-      });
+//       // 🔒 LOCK FUNDS ONLY
+//       tx.update(cardRef, {
+//         lockedBalance: (cardDoc.data().lockedBalance || 0) + amount
+//       });
 
-      tx.set(db.collection("withdrawal").doc(reference), {
-        userId,
-        cardId,
-        cardType,
-        amount,
-        status: "pending",
-        reference,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-    });
+//       tx.set(db.collection("withdrawal").doc(reference), {
+//         userId,
+//         cardId,
+//         cardType,
+//         amount,
+//         status: "pending",
+//         reference,
+//         createdAt: admin.firestore.FieldValue.serverTimestamp()
+//       });
+//     });
 
-    // send to Flutterwave
-    const response = await axios.post(
-      "https://api.flutterwave.com/v3/transfers",
-      {
-        account_bank: bankCode,
-        account_number: accountNumber,
-        amount,
-        currency: "NGN",
-        reference
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
-        },
-      }
-    );
+//     // send to Flutterwave
+//     const response = await axios.post(
+//       "https://api.flutterwave.com/v3/transfers",
+//       {
+//         account_bank: bankCode,
+//         account_number: accountNumber,
+//         amount,
+//         currency: "NGN",
+//         reference
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
+//         },
+//       }
+//     );
 
-    await db.collection("withdrawal").doc(reference).update({
-      flutterwave: response.data
-    });
+//     await db.collection("withdrawal").doc(reference).update({
+//       flutterwave: response.data
+//     });
 
-    res.json({
-      success: true,
-      reference,
-      message: "Transfer initiated"
-    });
+//     res.json({
+//       success: true,
+//       reference,
+//       message: "Transfer initiated"
+//     });
 
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-});
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message
+//     });
+//   }
+// });
 
-app.post("/bank-withdrawalPin", async (req, res) => {
-  try {
+// app.post("/bank-withdrawalPin", async (req, res) => {
+//   try {
 
-    let {
-      userId,
-      cardId,
-      cardType,
-      amount,
-      bankCode,
-      accountNumber,
-      accountName,
-      pin,
+//     let {
+//       userId,
+//       cardId,
+//       cardType,
+//       amount,
+//       bankCode,
+//       accountNumber,
+//       accountName,
+//       pin,
      
  
-    } = req.body;
+//     } = req.body;
 
-    // ✅ Convert amount
-    amount = Number(amount);
+//     // ✅ Convert amount
+//     amount = Number(amount);
 
-    // ✅ Validate input
-    if (!userId || !cardId || !amount || !bankCode || !accountNumber || !pin) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields"
-      });
-    }
+//     // ✅ Validate input
+//     if (!userId || !cardId || !amount || !bankCode || !accountNumber || !pin) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields"
+//       });
+//     }
 
-    if (amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid amount"
-      });
-    }
+//     if (amount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid amount"
+//       });
+//     }
 
-    const userRef = db.collection("users").doc(userId);
-    const cardRef = userRef
-      .collection(cardType === "wallet" ? "Cards" : "Merchant")
-      .doc(cardId);
+//     const userRef = db.collection("users").doc(userId);
+//     const cardRef = userRef
+//       .collection(cardType === "wallet" ? "Cards" : "Merchant")
+//       .doc(cardId);
 
-    const reference = `wd-${Date.now()}`;
+//     const reference = `wd-${Date.now()}`;
 
-    // ✅ Prevent duplicate reference
-    const existing = await db.collection("withdrawal").doc(reference).get();
-    if (existing.exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate transaction"
-      });
-    }
+//     // ✅ Prevent duplicate reference
+//     const existing = await db.collection("withdrawal").doc(reference).get();
+//     if (existing.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction"
+//       });
+//     }
 
-    // -------------------------
-    // 🔒 STEP 1: LOCK FUNDS (TRANSACTION)
-    // -------------------------
-    await db.runTransaction(async (tx) => {
+//     // -------------------------
+//     // 🔒 STEP 1: LOCK FUNDS (TRANSACTION)
+//     // -------------------------
+//     await db.runTransaction(async (tx) => {
 
-      const cardDoc = await tx.get(cardRef);
-      const userDoc = await tx.get(userRef);
+//       const cardDoc = await tx.get(cardRef);
+//       const userDoc = await tx.get(userRef);
 
-      if (!cardDoc.exists) throw new Error("Wallet not found");
+//       if (!cardDoc.exists) throw new Error("Wallet not found");
 
-      const currentBalance = Number(cardDoc.data().balance || 0);
+//       const currentBalance = Number(cardDoc.data().balance || 0);
 
-      if (currentBalance < amount) {
-        throw new Error("Insufficient balance");
-      }
+//       if (currentBalance < amount) {
+//         throw new Error("Insufficient balance");
+//       }
 
-      const newBalance = currentBalance - amount;
+//       const newBalance = currentBalance - amount;
 
-      // 🔒 Deduct immediately (LOCK)
-      tx.update(cardRef, { balance: newBalance });
-       await userRef.set({transferPasscode: pin}, { merge: true })
+//       // 🔒 Deduct immediately (LOCK)
+//       tx.update(cardRef, { balance: newBalance });
+//        await userRef.set({transferPasscode: pin}, { merge: true })
 
-      // 🔒 Save pending withdrawal
-      tx.set(db.collection("withdrawal").doc(reference), {
-        userId,
-        cardId,
-        cardType,
-        amount,
-        status: "pending",
-        reference,
-        firstname:accountName,
-        lastname:'',
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+//       // 🔒 Save pending withdrawal
+//       tx.set(db.collection("withdrawal").doc(reference), {
+//         userId,
+//         cardId,
+//         cardType,
+//         amount,
+//         status: "pending",
+//         reference,
+//         firstname:accountName,
+//         lastname:'',
+//         createdAt: admin.firestore.FieldValue.serverTimestamp()
+//       });
 
-        tx.set(userRef.collection("withdrawal").doc(reference), {
-        userId,
-        cardId,
-        cardType,
-        amount,
-        status: "pending",
-        reference,
-        firstname:accountName,
-        lastname:'',
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+//         tx.set(userRef.collection("withdrawal").doc(reference), {
+//         userId,
+//         cardId,
+//         cardType,
+//         amount,
+//         status: "pending",
+//         reference,
+//         firstname:accountName,
+//         lastname:'',
+//         createdAt: admin.firestore.FieldValue.serverTimestamp()
+//       });
 
-    });
+//     });
 
   
-    const response = await axios.post(
-      "https://api.flutterwave.com/v3/transfers",
-      {
-        account_bank: bankCode,
-        account_number: accountNumber,
-        amount,
-        currency: "NGN",
-        reference,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
-        },
-      }
-    );
+//     const response = await axios.post(
+//       "https://api.flutterwave.com/v3/transfers",
+//       {
+//         account_bank: bankCode,
+//         account_number: accountNumber,
+//         amount,
+//         currency: "NGN",
+//         reference,
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
+//         },
+//       }
+//     );
 
-    const transferData = response.data.data;
+//     const transferData = response.data.data;
 
-    // -------------------------
-    // ✅ STEP 3: UPDATE WITHDRAWAL
-    // -------------------------
-    await db.collection("withdrawal").doc(reference).update({
-      status: "pending",
-      flutterwaveData: transferData
-    });
+//     // -------------------------
+//     // ✅ STEP 3: UPDATE WITHDRAWAL
+//     // -------------------------
+//     await db.collection("withdrawal").doc(reference).update({
+//       status: "pending",
+//       flutterwaveData: transferData
+//     });
 
-    return res.json({
-      success: true,
-      message: "Withdrawal initiated",
-      data: transferData
-    });
+//     return res.json({
+//       success: true,
+//       message: "Withdrawal initiated",
+//       data: transferData
+//     });
 
-  } catch (error) {
+//   } catch (error) {
 
-    console.error("Withdrawal Error:", error.response?.data || error.message);
+//     console.error("Withdrawal Error:", error.response?.data || error.message);
 
-    return res.status(500).json({
-      success: false,
-      message: error.response?.data?.message || error.message || "Withdrawal failed"
-    });
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Withdrawal failed"
+//     });
 
-  }
-});
+//   }
+// });
 
 // =========================
 // Webhook to update withdrawal status
@@ -703,17 +706,108 @@ app.post("/bank-withdrawalPin", async (req, res) => {
 //   }
 // });
 
+app.post("/bank-withdrawal", async (req, res) => {
+  try {
+    const {
+      userId,
+      cardId,
+      cardType,
+      amount,
+      bankCode,
+      accountNumber,
+      accountName,
+      pin,
+    } = req.body;
+
+    if (!userId || !cardId || !amount || !bankCode || !accountNumber) {
+      return res.status(400).json({ message: "Missing fields" });
+    }
+
+    const reference = `wd_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef
+      .collection(cardType === "wallet" ? "Cards" : "Merchant")
+      .doc(cardId);
+
+    await db.runTransaction(async (tx) => {
+      const userDoc = await tx.get(userRef);
+      const cardDoc = await tx.get(cardRef);
+
+      if (!cardDoc.exists) throw new Error("Wallet not found");
+
+      if (pin !== userDoc.data().transferPasscode) {
+        throw new Error("Invalid PIN");
+      }
+
+      const balance = Number(cardDoc.data().balance || 0);
+
+      if (balance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      // 🔒 LOCK FUNDS (NOT DEDUCT YET)
+      tx.update(cardRef, {
+        lockedBalance: (cardDoc.data().lockedBalance || 0) + amount,
+      });
+
+      // create withdrawal doc
+      tx.set(db.collection("withdrawal").doc(reference), {
+        userId,
+        cardId,
+        amount,
+        status: "pending",
+        reference,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // 🚀 FLUTTERWAVE TRANSFER USING SDK
+    const payload = {
+      account_bank: bankCode,
+      account_number: accountNumber,
+      amount,
+      currency: "NGN",
+      reference,
+      narration: "Wallet Withdrawal",
+    };
+
+    const response = await flw.Transfer.initiate(payload);
+
+    console.log("FLW RESPONSE:", response);
+
+    await db.collection("withdrawal").doc(reference).update({
+      flutterwaveResponse: response,
+      status: "processing",
+    });
+
+    res.json({
+      success: true,
+      reference,
+      message: "Transfer initiated",
+    });
+
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 
 app.post("/flutterwave-webhook", async (req, res) => {
   try {
     const event = req.body;
+
+    console.log("WEBHOOK EVENT:", JSON.stringify(event, null, 2));
 
     if (event.event !== "transfer.completed") {
       return res.sendStatus(200);
     }
 
     const reference = event.data.reference;
-    const status = event.data.status; // SUCCESS or FAILED
+    const status = event.data.status;
 
     const withdrawalRef = db.collection("withdrawal").doc(reference);
     const withdrawalDoc = await withdrawalRef.get();
@@ -725,22 +819,20 @@ app.post("/flutterwave-webhook", async (req, res) => {
     const cardRef = db
       .collection("users")
       .doc(data.userId)
-      .collection(data.cardType === "wallet" ? "Cards" : "Merchant")
+      .collection("Cards")
       .doc(data.cardId);
 
     const cardDoc = await cardRef.get();
-
     const lockedBalance = cardDoc.data().lockedBalance || 0;
 
     // ✅ SUCCESS
     if (status === "SUCCESSFUL") {
       await cardRef.update({
-        lockedBalance: lockedBalance - data.amount
+        lockedBalance: lockedBalance - data.amount,
       });
 
       await withdrawalRef.update({
         status: "approved",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
     }
 
@@ -748,20 +840,18 @@ app.post("/flutterwave-webhook", async (req, res) => {
     if (status === "FAILED") {
       await cardRef.update({
         lockedBalance: lockedBalance - data.amount,
-        balance: admin.firestore.FieldValue.increment(data.amount)
+        balance: admin.firestore.FieldValue.increment(data.amount),
       });
 
       await withdrawalRef.update({
         status: "failed",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
     }
 
-    res.sendStatus(200);
-
+    return res.sendStatus(200);
   } catch (err) {
-    console.error(err);
-    res.sendStatus(500);
+    console.log("WEBHOOK ERROR:", err.message);
+    return res.sendStatus(500);
   }
 });
 
@@ -1044,25 +1134,25 @@ app.post("/wallet-to-ticket", async (req, res) => {
   }
 });
 
-app.get("/check-ip", async (req, res) => {
-  try {
+// app.get("/check-ip", async (req, res) => {
+//   try {
 
-    const response = await axios.get(
-      "https://api.flutterwave.com/v3/verify-ip",
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`
-        }
-      }
-    );
+//     const response = await axios.get(
+//       "https://api.flutterwave.com/v3/verify-ip",
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`
+//         }
+//       }
+//     );
 
-    res.json(response.data);
+//     res.json(response.data);
 
-  } catch (error) {
-    console.log(error.response?.data || error.message);
-    res.status(500).json(error.response?.data || { error: error.message });
-  }
-});
+//   } catch (error) {
+//     console.log(error.response?.data || error.message);
+//     res.status(500).json(error.response?.data || { error: error.message });
+//   }
+// });
 
 app.get("/withdrawal-status/:reference", async (req, res) => {
   try {
@@ -1076,28 +1166,28 @@ app.get("/withdrawal-status/:reference", async (req, res) => {
   }
 });
 
-app.get("/bill-categories", async (req, res) => {
-  try {
+// app.get("/bill-categories", async (req, res) => {
+//   try {
 
-    const response = await axios.get(
-      "https://api.flutterwave.com/v3/top-bill-categories?country=NG",
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
-        },
-      }
-    );
+//     const response = await axios.get(
+//       "https://api.flutterwave.com/v3/top-bill-categories?country=NG",
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
+//         },
+//       }
+//     );
 
-    res.json(response.data);
+//     res.json(response.data);
 
-  } catch (error) {
+//   } catch (error) {
 
-    res.status(500).json({
-      error: error.response?.data || error.message,
-    });
+//     res.status(500).json({
+//       error: error.response?.data || error.message,
+//     });
 
-  }
-});
+//   }
+// });
 
 app.get("/my-ip", async (req, res) => {
   const response = await axios.get("https://api.ipify.org?format=json");
