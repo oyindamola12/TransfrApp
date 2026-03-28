@@ -40,7 +40,7 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// const FLW_SECRET_KEY = "FLWSECK_TEST-41f568066a3e9d9bfaaedeca9f8e5572-X"; // replace with your actual key
+// const FLW_SECRET_KEY = "FLWSECK_TEST-41f568066a3e9d9bfaaedeca9f8e5572-X"; 
 app.get("/", (req, res) => {
   res.send("Backend is running!");
 });
