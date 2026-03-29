@@ -777,6 +777,7 @@ app.post("/bank-withdrawal", async (req, res) => {
     };
 
     const response = await flw.Transfer.initiate(payload);
+    const transferData = response.data;
 
     console.log("FLW RESPONSE:", response);
 
@@ -789,6 +790,7 @@ app.post("/bank-withdrawal", async (req, res) => {
       success: true,
       reference,
       message: "Transfer initiated",
+      status: transferData.status
     });
 
   } catch (error) {
@@ -858,6 +860,7 @@ app.post("/flutterwave-webhook", async (req, res) => {
     return res.sendStatus(500);
   }
 });
+
 
 app.post("/wallet-to-wallet", async (req, res) => {
   try {
