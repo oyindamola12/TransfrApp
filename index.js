@@ -777,7 +777,7 @@ app.post("/bank-withdrawal", async (req, res) => {
     };
 
     const response = await flw.Transfer.initiate(payload);
-    const transferData = response.data;
+    const transfer = response.data;
 
     console.log("FLW RESPONSE:", response);
 
@@ -787,10 +787,10 @@ app.post("/bank-withdrawal", async (req, res) => {
     });
 
     res.json({
-      success: true,
-      reference,
-      message: "Transfer initiated",
-      status: transferData.status
+       success: true,
+     reference: transfer.reference,   // ✅ important
+  status: transfer.status,         // ✅ NEW / PENDING
+  message: response.message        // optional
     });
 
   } catch (error) {
