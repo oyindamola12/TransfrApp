@@ -1243,9 +1243,7 @@ app.get("/billers", async (req, res) => {
 
     const response = await flw.Bills.fetch_bills_Cat({
       country: "NG",
-      is_airtime: true
-
-    });
+});
 
   
 
