@@ -1200,24 +1200,26 @@ app.get("/withdrawal-status/:reference", async (req, res) => {
 
 app.get("/billers", async (req, res) => {
   try {
-    const response = await flw.Bills.getBillers();
+
+    // ✅ Step 1: Get bill categories
+    const categories = await flw.Bills.getBillCategories();
 
     res.json({
       success: true,
-      count: response.data.length,
-      data: response.data
+      data: categories.data
     });
 
   } catch (error) {
+
     console.error("Billers Error:", error.message);
 
     res.status(500).json({
       success: false,
       message: error.message
     });
+
   }
 });
-
 
 // ==========================================
 // 🎯 FILTER BY CATEGORY (OPTIONAL)
