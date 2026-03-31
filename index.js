@@ -1198,7 +1198,28 @@ app.get("/bill-categories", async (req, res) => {
 
 app.get("/billers", async (req, res) => {
   try {
-      const response = await flw.Bills.fetch_bills_Cat()
+   const response = await flw.Bills.fetch_bills_Cat({
+      country: "NG"
+    });
+
+    const allBillers = response.data;
+
+    // 🔥 FILTER AIRTIME
+    const airtimeBillers = allBillers.filter((item) => {
+
+      const name = item.name?.toLowerCase() || "";
+
+      return (
+        name.includes("airtime")
+      );
+
+    });
+
+    res.json({
+      success: true,
+      count: airtimeBillers.length,
+      data: airtimeBillers
+    });
 
     res.json({
       success: true,
