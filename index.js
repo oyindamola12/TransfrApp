@@ -1249,7 +1249,7 @@ app.get("/billers", async (req, res) => {
 
     // 🔥 FILTER AIRTIME
       const airtimeBillers = response.data.filter(
-  item => item.is_airtime === true
+  item => item.label_name === 'Meter Number'
 );
 
     res.json({
@@ -1269,6 +1269,41 @@ app.get("/billers", async (req, res) => {
 
   }
 });
+
+
+
+app.get("/airtime", async (req, res) => {
+  try {
+
+    const response = await flw.Bills.fetch_bills_Cat({
+      country: "NG",
+});
+
+  
+
+    // 🔥 FILTER AIRTIME
+      const airtimeBillers = response.data.filter(
+  item => item.is_airtime === true 
+);
+
+    res.json({
+      success: true,
+      count: airtimeBillers.length,
+      data: airtimeBillers
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+
+  }
+});
+
 // ==========================================
 // 🎯 FILTER BY CATEGORY (OPTIONAL)
 // ==========================================
