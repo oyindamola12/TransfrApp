@@ -1253,9 +1253,8 @@ app.get("/billers", async (req, res) => {
       const name = item.name?.toLowerCase() || "";
 
       return (
-        name.includes("airtime") ||
-        name.includes("topup") ||
-        name.includes("vtu")
+        name.includes("airtime") 
+       
       );
 
     });
