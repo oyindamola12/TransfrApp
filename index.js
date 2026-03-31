@@ -1169,30 +1169,28 @@ app.get("/withdrawal-status/:reference", async (req, res) => {
   }
 });
 
-// app.get("/bill-categories", async (req, res) => {
-//   try {
+app.get("/bill-categories", async (req, res) => {
+  try {
 
-//     const response = await axios.get(
-//       "https://api.flutterwave.com/v3/top-bill-categories?country=NG",
-//       {
-//         headers: {
-//           Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
-//         },
-//       }
-//     );
+    const response = await axios.get(
+      "https://api.flutterwave.com/v3/top-bill-categories?country=NG",
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.FLW_SECRET_KEY}`,
+        },
+      }
+    );
 
-//     res.json(response.data);
+    res.json(response.data);
 
-//   } catch (error) {
+  } catch (error) {
 
-//     res.status(500).json({
-//       error: error.response?.data || error.message,
-//     });
+    res.status(500).json({
+      error: error.response?.data || error.message,
+    });
 
-//   }
-// });
-
-
+  }
+});
 
 // ==========================================
 // 🔥 GET ALL BILLERS
@@ -1200,26 +1198,24 @@ app.get("/withdrawal-status/:reference", async (req, res) => {
 
 app.get("/billers", async (req, res) => {
   try {
-
-    // ✅ Step 1: Get bill categories
-    const categories = await flw.Bills.getBillCategories();
+      const response = await flw.Bills.fetch_bills_Cat()
 
     res.json({
       success: true,
-      data: categories.data
+      count: response.data.length,
+      data: response.data
     });
 
   } catch (error) {
-
     console.error("Billers Error:", error.message);
 
     res.status(500).json({
       success: false,
       message: error.message
     });
-
   }
 });
+
 
 // ==========================================
 // 🎯 FILTER BY CATEGORY (OPTIONAL)
