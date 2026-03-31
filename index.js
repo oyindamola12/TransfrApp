@@ -1247,18 +1247,12 @@ app.get("/billers", async (req, res) => {
 
     });
 
-    const allBillers = response.data.data;
+  
 
     // 🔥 FILTER AIRTIME
-    const airtimeBillers = allBillers.filter((item) => {
-
-      const name = item.name?.toLowerCase() || "";
-
-      // return (
-      //   name.includes("airtime") 
-      // );
-
-    });
+      const airtimeBillers = response.data.filter(
+  item => item.is_airtime === true
+);
 
     res.json({
       success: true,
