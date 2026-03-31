@@ -15,7 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const flw = new Flutterwave(
-  process.env.FLW_PUBLIC_KEY,
+  process.env.FLW_PUBLIC_KEY, 
   process.env.FLW_SECRET_KEY
 );
 
@@ -174,8 +174,6 @@ app.post("/fund-ticket", async (req, res) => {
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
-
-
 
 // app.post("/bank-withdrawal", async (req, res) => {
 //   try {
@@ -709,7 +707,6 @@ app.post("/fund-ticket", async (req, res) => {
 // Initiate Bank Withdrawal
 // =========================
 
-
 app.post("/bank-withdrawal", async (req, res) => {
   try {
     const {
@@ -860,7 +857,6 @@ app.post("/flutterwave-webhook", async (req, res) => {
     return res.sendStatus(500);
   }
 });
-
 
 app.post("/wallet-to-wallet", async (req, res) => {
   try {
@@ -1195,6 +1191,69 @@ app.get("/withdrawal-status/:reference", async (req, res) => {
 
 //   }
 // });
+
+
+
+// ==========================================
+// 🔥 GET ALL BILLERS
+// ==========================================
+
+app.get("/billers", async (req, res) => {
+  try {
+    const response = await flw.Bills.getBillers();
+
+    res.json({
+      success: true,
+      count: response.data.length,
+      data: response.data
+    });
+
+  } catch (error) {
+    console.error("Billers Error:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+
+// ==========================================
+// 🎯 FILTER BY CATEGORY (OPTIONAL)
+// ==========================================
+
+app.get("/billers/:category", async (req, res) => {
+  try {
+    const { category } = req.params;
+
+    const response = await flw.Bills.getBillers();
+
+    const filtered = response.data.filter(
+      item => item.category?.toLowerCase() === category.toLowerCase()
+    );
+
+    res.json({
+      success: true,
+      category,
+      count: filtered.length,
+      data: filtered
+    });
+
+  } catch (error) {
+    console.error("Filter Error:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+
+// ==========================================
+// 🚀 START SERVER
+// ==========================================
 
 app.get("/my-ip", async (req, res) => {
   const response = await axios.get("https://api.ipify.org?format=json");
