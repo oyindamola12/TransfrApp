@@ -1242,20 +1242,21 @@ app.get("/billers", async (req, res) => {
   try {
 
     const response = await flw.Bills.fetch_bills_Cat({
-      country: "NG"
+      country: "NG",
+      is_airtime: true
+
     });
 
-    const allBillers = response.data;
+    const allBillers = response.data.data;
 
     // 🔥 FILTER AIRTIME
     const airtimeBillers = allBillers.filter((item) => {
 
       const name = item.name?.toLowerCase() || "";
 
-      return (
-        name.includes("airtime") 
-       
-      );
+      // return (
+      //   name.includes("airtime") 
+      // );
 
     });
 
