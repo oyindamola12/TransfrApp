@@ -1196,9 +1196,52 @@ app.get("/bill-categories", async (req, res) => {
 // 🔥 GET ALL BILLERS
 // ==========================================
 
+// app.get("/billers", async (req, res) => {
+//   try {
+//    const response = await flw.Bills.fetch_bills_Cat({
+//       country: "NG"
+//     });
+
+//     const allBillers = response.data;
+
+//     // 🔥 FILTER AIRTIME
+//     const airtimeBillers = allBillers.filter((item) => {
+
+//       const name = item.name?.toLowerCase() || "";
+
+//       return (
+//         name.includes("airtime")
+//       );
+
+//     });
+
+//     res.json({
+//       success: true,
+//       count: airtimeBillers.length,
+//       data: airtimeBillers
+//     });
+
+//     // res.json({
+//     //   success: true,
+//     //   count: response.data.length,
+//     //   data: response.data
+//     // });
+
+//   } catch (error) {
+//     console.error("Billers Error:", error.message);
+
+//     res.status(500).json({
+//       success: false,
+//       message: error.message
+//     });
+//   }
+// });
+
+
 app.get("/billers", async (req, res) => {
   try {
-   const response = await flw.Bills.fetch_bills_Cat({
+
+    const response = await flw.Bills.fetch_bills_Cat({
       country: "NG"
     });
 
@@ -1210,7 +1253,9 @@ app.get("/billers", async (req, res) => {
       const name = item.name?.toLowerCase() || "";
 
       return (
-        name.includes("airtime")
+        name.includes("airtime") ||
+        name.includes("topup") ||
+        name.includes("vtu")
       );
 
     });
@@ -1221,23 +1266,17 @@ app.get("/billers", async (req, res) => {
       data: airtimeBillers
     });
 
-    res.json({
-      success: true,
-      count: response.data.length,
-      data: response.data
-    });
-
   } catch (error) {
-    console.error("Billers Error:", error.message);
+
+    console.error(error);
 
     res.status(500).json({
       success: false,
       message: error.message
     });
+
   }
 });
-
-
 // ==========================================
 // 🎯 FILTER BY CATEGORY (OPTIONAL)
 // ==========================================
