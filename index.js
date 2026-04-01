@@ -1245,12 +1245,14 @@ app.get("/billers", async (req, res) => {
       country: "NG",
 });
 
-  
+      const allBillers = response.data;
 
     // 🔥 FILTER AIRTIME
-      const airtimeBillers = response.data.filter(
-item => item.label_name?.toLowerCase() === "smart card number"
-);
+ const airtimeBillers = allBillers.filter(item => {
+  const label = item.label_name?.toLowerCase() || "";
+
+  return label.includes("smart") && label.includes("card");
+});
 
     res.json({
       success: true,
