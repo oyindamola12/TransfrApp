@@ -1249,7 +1249,7 @@ app.get("/billers", async (req, res) => {
 
     // 🔥 FILTER AIRTIME
       const airtimeBillers = response.data.filter(
-  item => item.biller_code === "BIL123" 
+  item => item.biller_code === "BIL120" 
   // && item.biller_code === "BIL120"  
   // && item.biller_code === "BIL123" 
   // && item.biller_code === "BIL125" 
