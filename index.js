@@ -1249,7 +1249,7 @@ app.get("/billers", async (req, res) => {
 
     // 🔥 FILTER AIRTIME
       const airtimeBillers = response.data.filter(
-  item => item.label_name === 'Smart Card Number'
+  item => item.label_name === "LCC Account Number"
 );
 
     res.json({
