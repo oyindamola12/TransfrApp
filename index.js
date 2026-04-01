@@ -1248,13 +1248,8 @@ app.get("/billers", async (req, res) => {
   
 
     // 🔥 FILTER AIRTIME
-      const airtimeBillers = response.data.data.filter(
-  item => item.biller_code === "BIL125" 
-  // && item.biller_code === "BIL120"  
-  // && item.biller_code === "BIL123" 
-  // && item.biller_code === "BIL125" 
-  // && item.biller_code === "BIL128" 
-  // && item.biller_code === "BIL129" 
+      const airtimeBillers = response.data.filter(
+item => item.label_name?.toLowerCase() === "smart card number"
 );
 
     res.json({
