@@ -1248,7 +1248,7 @@ app.get("/billers", async (req, res) => {
   
 
     // 🔥 FILTER AIRTIME
-      const airtimeBillers = response.data.filter(
+      const airtimeBillers = response.data.data.filter(
   item => item.biller_code === "BIL125" 
   // && item.biller_code === "BIL120"  
   // && item.biller_code === "BIL123" 
