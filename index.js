@@ -1336,6 +1336,50 @@ app.get("/airtime", async (req, res) => {
   }
 });
 
+app.get("/data-billers", async (req, res) => {
+  try {
+    const response = await flw.Bills.fetch_bills_Cat({
+      country: "NG"
+    });
+
+    const allBillers = response.data;
+
+    // 🎯 FILTER DATA BUNDLES
+    const dataBundles = allBillers.filter(item => {
+      const name = item.name?.toLowerCase() || "";
+
+      return (
+        name.includes("data") ||
+        name.includes("bundle")
+      );
+    });
+
+    // ✅ Clean response
+    const formatted = dataBundles.map(item => ({
+      id: item.id,
+      name: item.name,
+      biller_code: item.biller_code,
+      item_code: item.item_code,
+      network: item.short_name,
+      label: item.label_name
+    }));
+
+    res.json({
+      success: true,
+      count: formatted.length,
+      data: formatted
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 // ==========================================
 // 🎯 FILTER BY CATEGORY (OPTIONAL)
 // ==========================================
