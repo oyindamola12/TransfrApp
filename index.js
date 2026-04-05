@@ -1412,10 +1412,447 @@ app.get("/billers/:category", async (req, res) => {
 });
 
 
+
+app.post("/buy-airtime", async (req, res) => {
+  try {
+    const {
+      userId,
+      amount,
+      phoneNumber,
+      network, // MTN, GLO, Airtel, 9mobile
+      cardId,
+      cardType
+    } = req.body;
+
+    if (!userId || !amount || !phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields"
+      });
+    }
+
+    // 🔥 BILLER CODE (same for airtime)
+ 
+
+    // 🔥 UNIQUE REF
+    const reference = `air-${Date.now()}`;
+
+    // -------------------------
+    // 🔒 STEP 1: LOCK USER MONEY
+    // -------------------------
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef
+      .collection(cardType === "wallet" ? "Cards" : "Merchant")
+      .doc(cardId);
+
+    await db.runTransaction(async (tx) => {
+      const cardDoc = await tx.get(cardRef);
+
+      if (!cardDoc.exists) throw new Error("Wallet not found");
+
+      const balance = Number(cardDoc.data().balance || 0);
+
+      if (balance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      tx.update(cardRef, {
+        balance: balance - amount
+      });
+
+      tx.set(db.collection("airtime").doc(reference), {
+        userId,
+        amount,
+        phoneNumber,
+        network,
+        status: "pending",
+        reference,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // -------------------------
+    // 💳 STEP 2: CALL FLUTTERWAVE
+    // -------------------------
+    const payload = {
+      country: "NG",
+      customer: phoneNumber,
+      amount,
+      type: "AIRTIME",
+      recurrence: "ONCE",
+      reference,
+    };
+
+    const response = await flw.Bills.create_bill(payload);
+
+    // -------------------------
+    // ✅ STEP 3: UPDATE STATUS
+    // -------------------------
+    await db.collection("airtime").doc(reference).update({
+      status: "success",
+      flutterwaveResponse: response
+    });
+
+    return res.json({
+      success: true,
+      message: "Airtime purchase successful",
+      reference
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    // ❌ REFUND IF FAILED
+    if (req.body?.userId && req.body?.cardId) {
+      const userRef = db.collection("users").doc(req.body.userId);
+      const cardRef = userRef.collection("Cards").doc(req.body.cardId);
+
+      await cardRef.update({
+        balance: admin.firestore.FieldValue.increment(Number(req.body.amount))
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+app.post("/buy-data", async (req, res) => {
+  try {
+    const {
+      userId,
+      amount,
+      phoneNumber,
+      network,       // MTN, GLO, Airtel, 9mobile
+      planId,        // 🔥 IMPORTANT (data plan ID from Flutterwave)
+      cardId,
+      cardType
+    } = req.body;
+
+    if (!userId || !amount || !phoneNumber || !planId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields"
+      });
+    }
+
+    const reference = `data-${Date.now()}`;
+
+    // -------------------------
+    // 🔒 STEP 1: LOCK USER MONEY
+    // -------------------------
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef
+      .collection(cardType === "wallet" ? "Cards" : "Merchant")
+      .doc(cardId);
+
+    await db.runTransaction(async (tx) => {
+      const cardDoc = await tx.get(cardRef);
+
+      if (!cardDoc.exists) throw new Error("Wallet not found");
+
+      const balance = Number(cardDoc.data().balance || 0);
+
+      if (balance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      tx.update(cardRef, {
+        balance: balance - amount
+      });
+
+      tx.set(db.collection("data").doc(reference), {
+        userId,
+        amount,
+        phoneNumber,
+        network,
+        planId,
+        status: "pending",
+        reference,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // -------------------------
+    // 💳 STEP 2: CALL FLUTTERWAVE
+    // -------------------------
+    const payload = {
+      country: "NG",
+      customer: phoneNumber,
+      amount,
+      type: "DATA_BUNDLE",
+      recurrence: "ONCE",
+      reference,
+      biller_code: planId // 🔥 THIS IS KEY FOR DATA
+    };
+
+    const response = await flw.Bills.create_bill(payload);
+
+    // -------------------------
+    // ✅ STEP 3: UPDATE STATUS
+    // -------------------------
+    await db.collection("data").doc(reference).update({
+      status: "success",
+      flutterwaveResponse: response
+    });
+
+    return res.json({
+      success: true,
+      message: "Data purchase successful",
+      reference
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    // ❌ REFUND LOGIC (FIXED 🔥)
+    if (req.body?.userId && req.body?.cardId && req.body?.amount) {
+      const userRef = db.collection("users").doc(req.body.userId);
+
+      const cardRef = userRef
+        .collection(req.body.cardType === "wallet" ? "Cards" : "Merchant")
+        .doc(req.body.cardId);
+
+      await cardRef.update({
+        balance: admin.firestore.FieldValue.increment(Number(req.body.amount))
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
 // ==========================================
 // 🚀 START SERVER
 // ==========================================
 
+app.post("/buy-power", async (req, res) => {
+  try {
+    const {
+      userId,
+      amount,
+      meterNumber,
+      disco,        // e.g. "EKEDC", "IKEDC", "AEDC"
+      meterType,    // "prepaid" or "postpaid"
+      customerName,
+      cardId,
+      cardType
+    } = req.body;
+
+    if (!userId || !amount || !meterNumber || !disco) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields"
+      });
+    }
+
+    const reference = `power-${Date.now()}`;
+
+    // -------------------------
+    // 🔒 STEP 1: LOCK USER MONEY
+    // -------------------------
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef
+      .collection(cardType === "wallet" ? "Cards" : "Merchant")
+      .doc(cardId);
+
+    await db.runTransaction(async (tx) => {
+      const cardDoc = await tx.get(cardRef);
+
+      if (!cardDoc.exists) throw new Error("Wallet not found");
+
+      const balance = Number(cardDoc.data().balance || 0);
+
+      if (balance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      tx.update(cardRef, {
+        balance: balance - amount
+      });
+
+      tx.set(db.collection("power").doc(reference), {
+        userId,
+        amount,
+        meterNumber,
+        disco,
+        meterType,
+        customerName,
+        status: "pending",
+        reference,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // -------------------------
+    // 💳 STEP 2: CALL FLUTTERWAVE
+    // -------------------------
+    const payload = {
+      country: "NG",
+      customer: meterNumber,
+      amount,
+      type: "ELECTRICITY",
+      reference,
+      biller_code: disco,   // 🔥 VERY IMPORTANT
+    };
+
+    const response = await flw.Bills.create_bill(payload);
+
+    // -------------------------
+    // ✅ STEP 3: UPDATE STATUS
+    // -------------------------
+    await db.collection("power").doc(reference).update({
+      status: "success",
+      flutterwaveResponse: response
+    });
+
+    return res.json({
+      success: true,
+      message: "Electricity purchase successful",
+      reference,
+      token: response?.data?.token || null // prepaid token
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    // ❌ REFUND LOGIC
+    if (req.body?.userId && req.body?.cardId && req.body?.amount) {
+      const userRef = db.collection("users").doc(req.body.userId);
+
+      const cardRef = userRef
+        .collection(req.body.cardType === "wallet" ? "Cards" : "Merchant")
+        .doc(req.body.cardId);
+
+      await cardRef.update({
+        balance: admin.firestore.FieldValue.increment(Number(req.body.amount))
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+
+app.post("/buy-cable", async (req, res) => {
+  try {
+    const {
+      userId,
+      amount,
+      smartCardNumber,   // IUC / Smartcard
+      provider,          // DSTV, GOTV, STARTIMES
+      planId,            // 🔥 bouquet code (VERY IMPORTANT)
+      customerName,
+      cardId,
+      cardType
+    } = req.body;
+
+    if (!userId || !amount || !smartCardNumber || !planId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields"
+      });
+    }
+
+    const reference = `cable-${Date.now()}`;
+
+    // -------------------------
+    // 🔒 STEP 1: LOCK USER MONEY
+    // -------------------------
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef
+      .collection(cardType === "wallet" ? "Cards" : "Merchant")
+      .doc(cardId);
+
+    await db.runTransaction(async (tx) => {
+      const cardDoc = await tx.get(cardRef);
+
+      if (!cardDoc.exists) throw new Error("Wallet not found");
+
+      const balance = Number(cardDoc.data().balance || 0);
+
+      if (balance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      tx.update(cardRef, {
+        balance: balance - amount
+      });
+
+      tx.set(db.collection("cable").doc(reference), {
+        userId,
+        amount,
+        smartCardNumber,
+        provider,
+        planId,
+        customerName,
+        status: "pending",
+        reference,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // -------------------------
+    // 💳 STEP 2: CALL FLUTTERWAVE
+    // -------------------------
+    const payload = {
+      country: "NG",
+      customer: smartCardNumber,
+      amount,
+      type: "CABLE",
+      reference,
+      biller_code: planId // 🔥 bouquet code
+    };
+
+    const response = await flw.Bills.create_bill(payload);
+
+    // -------------------------
+    // ✅ STEP 3: UPDATE STATUS
+    // -------------------------
+    await db.collection("cable").doc(reference).update({
+      status: "success",
+      flutterwaveResponse: response
+    });
+
+    return res.json({
+      success: true,
+      message: "Cable subscription successful",
+      reference
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    // ❌ REFUND LOGIC
+    if (req.body?.userId && req.body?.cardId && req.body?.amount) {
+      const userRef = db.collection("users").doc(req.body.userId);
+
+      const cardRef = userRef
+        .collection(req.body.cardType === "wallet" ? "Cards" : "Merchant")
+        .doc(req.body.cardId);
+
+      await cardRef.update({
+        balance: admin.firestore.FieldValue.increment(Number(req.body.amount))
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
 app.get("/my-ip", async (req, res) => {
   const response = await axios.get("https://api.ipify.org?format=json");
   res.json(response.data);
