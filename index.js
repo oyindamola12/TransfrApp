@@ -145,7 +145,7 @@ app.post("/fund-wallet", async (req, res) => {
       return res.status(400).json({ message: "Payment not verified" });
     }
 
-    const amount = paymentData.amount / 100;
+    const amount = paymentData.amount;
     const metadata = paymentData.metadata;
 
     const { userId, cardId, firstname, lastname } = metadata;
