@@ -2304,46 +2304,56 @@ app.post("/init-paystack", async (req, res) => {
 });
 
 app.post("/resolve-bvn", async (req, res) => {
-  try {
-    const { bvn } = req.body;
+try {
+    const { account_number, bank_code, bvn } = req.body;
 
-    if (!bvn) {
+    // 🔒 validate input
+    if (!account_number || !bank_code || !bvn) {
       return res.status(400).json({
         success: false,
-        message: "BVN is required",
+        message: "account_number, bank_code and bvn are required",
       });
     }
 
+    // 🚀 PAYSTACK REQUEST (VERY IMPORTANT FORMAT)
     const response = await axios.get(
-      "https://api.paystack.co/bvn/resolve",
+      "https://api.paystack.co/bank/match_bvn",
       {
-        params: { bvn },
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        },
+        params: {
+          account_number: account_number,
+          bank_code: bank_code,
+          bvn: bvn,
         },
       }
     );
 
-    const data = response.data.data;
+    const result = response.data;
+
+    console.log("Paystack BVN Match:", result);
 
     return res.json({
       success: true,
-      data: {
-        first_name: data.first_name,
-        last_name: data.last_name,
-        dob: data.dob,
-        phone: data.phone,
-      },
+      match: result.data.match, // true or false
+      message: result.data.match
+        ? "BVN matches this account"
+        : "BVN does NOT match this account",
     });
 
   } catch (error) {
-    console.error(error.response?.data || error.message);
+    console.error("BVN MATCH ERROR:", error.response?.data || error.message);
 
     return res.status(500).json({
       success: false,
-      message: "BVN resolution failed",
+      message:
+        error.response?.data?.message || "BVN match verification failed",
     });
   }
+
+
+  
 });
 
 app.listen(process.env.PORT || 3000, () => {
