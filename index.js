@@ -49,128 +49,36 @@ app.get("/ping", (req, res) => {
   res.json({ success: true, message: "Backend is connected!" });
 });
 
-// app.post("/fund-wallet", async (req, res) => {
-//   try {
-//     const { userId, cardId, firstname, lastname, amount, status, transaction_id } = req.body;
-
-//     // if (!userId || !cardId || !amount || !status) {
-//     //   return res.status(400).json({ message: "Missing required fields" });
-//     // }
-
-//     if (status !== "successful") {
-//       return res.status(400).json({ message: "Payment not successful" });
-//     }
-
-//     const userRef = db.collection("users").doc(userId);
-//     const cardRef = userRef.collection("Cards").doc(cardId);
-//     const cardRef2 = db.collection("Cards").doc(cardId);
-
-//     await db.runTransaction(async (tx) => {
-//       // 🔹 Read current balance
-//       const cardDoc = await tx.get(cardRef);
-//       const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
-//       const newBalance = oldBalance + Number(amount);
-
-//       // 🔹 Update balances
-//       tx.set(cardRef, { balance: newBalance }, { merge: true });
-//       tx.set(cardRef2, { balance: newBalance }, { merge: true });
-
-//       // 🔹 Update user notifications
-//       tx.update(userRef, { notification: true, inappnotification: true });
-
-//       // 🔹 Add user transaction log
-//       const userTxnRef = userRef.collection("Transactions").doc();
-//       tx.set(userTxnRef, {
-//         amount,
-//         balance: newBalance,
-//         cardNumber: cardId,
-//         status: "BankFund",
-//         date: admin.firestore.FieldValue.serverTimestamp(),
-//         cardType: "wallet",
-//         paymentMethod: "bank",
-//         firstname,
-//         lastname,
-//         transactionNo: transaction_id || `txn-${Date.now()}`,
-//       });
-
-//       // 🔹 Add global transaction log
-//       const allTxnRef = db.collection("AllTransaction").doc();
-//       tx.set(allTxnRef, {
-//         amount,
-//         cardType: "wallet",
-//         date: admin.firestore.FieldValue.serverTimestamp(),
-//         redeemer: { name: firstname + " " + lastname },
-//         transactionNo: transaction_id || `txn-${Date.now()}`,
-//       });
-//     });
-
-//     res.json({ success: true, message: "Payment recorded successfully" });
-//   } catch (error) {
-//     console.error(error.message);
-//     res.status(500).json({ success: false, message: "Internal server error" });
-//   }
-// });
-
-
-
 app.post("/fund-wallet", async (req, res) => {
   try {
-    const { reference } = req.body;
+    const { userId, cardId, firstname, lastname, amount, transaction_id } = req.body;
 
-    if (!reference) {
-      return res.status(400).json({ message: "Reference is required" });
+    if (!userId || !cardId || !amount) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // 🔐 CHECK IF ALREADY PROCESSED
-    const txRef = db.collection("transactions").doc(reference);
-    const existing = await txRef.get();
-
-    if (existing.exists) {
-      return res.json({ success: true, message: "Already processed" });
-    }
-
-    // 🔐 VERIFY WITH PAYSTACK
-    const verifyRes = await axios.get(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-        },
-      }
-    );
-
-    const paymentData = verifyRes.data.data;
-
-    if (paymentData.status !== "success") {
-      return res.status(400).json({ message: "Payment not verified" });
-    }
-
-    const amount = paymentData.amount;
-    const metadata = paymentData.metadata;
-
-    const { userId, cardId, firstname, lastname } = metadata;
+    // if (status !== "successful") {
+    //   return res.status(400).json({ message: "Payment not successful" });
+    // }
 
     const userRef = db.collection("users").doc(userId);
     const cardRef = userRef.collection("Cards").doc(cardId);
     const cardRef2 = db.collection("Cards").doc(cardId);
 
     await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
       const cardDoc = await tx.get(cardRef);
       const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
+      const newBalance = oldBalance + Number(amount);
 
-      const newBalance = oldBalance + amount;
-
-      // 💰 update wallet
+      // 🔹 Update balances
       tx.set(cardRef, { balance: newBalance }, { merge: true });
       tx.set(cardRef2, { balance: newBalance }, { merge: true });
 
-      // 🔔 notifications
-      tx.update(userRef, {
-        notification: true,
-        inappnotification: true,
-      });
+      // 🔹 Update user notifications
+      tx.update(userRef, { notification: true, inappnotification: true });
 
-      // 🧾 user transaction
+      // 🔹 Add user transaction log
       const userTxnRef = userRef.collection("Transactions").doc();
       tx.set(userTxnRef, {
         amount,
@@ -178,211 +86,92 @@ app.post("/fund-wallet", async (req, res) => {
         cardNumber: cardId,
         status: "BankFund",
         date: admin.firestore.FieldValue.serverTimestamp(),
+        cardType: "wallet",
         paymentMethod: "bank",
         firstname,
         lastname,
-        transactionNo: reference,
-        cardType: "wallet",
+        transactionNo: transaction_id || `txn-${Date.now()}`,
       });
 
-      // 🌍 global transaction
+      // 🔹 Add global transaction log
       const allTxnRef = db.collection("AllTransaction").doc();
       tx.set(allTxnRef, {
-         amount,
+        amount,
         cardType: "wallet",
         date: admin.firestore.FieldValue.serverTimestamp(),
         redeemer: { name: firstname + " " + lastname },
         transactionNo: transaction_id || `txn-${Date.now()}`,
       });
-
-      // 🔐 SAVE TRANSACTION (PREVENT DUPLICATE)
-      tx.set(txRef, {
-        reference,
-        amount,
-        userId,
-        status: "success",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
     });
 
-    return res.json({
-      success: true,
-      message: "Wallet funded successfully",
-    });
-
+    res.json({ success: true, message: "Payment recorded successfully" });
   } catch (error) {
-    console.error(error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
-
 app.post("/fund-ticket", async (req, res) => {
   try {
-    const {
-      userId,
-      cardId,
-      firstname,
-      lastname,
-      amount,
-      transaction_id,
-      reference
-    } = req.body;
+    const { userId, cardId, firstname, lastname, amount, transaction_id } = req.body;
 
-    if (!userId || !amount || !reference) {
+    if (!userId || !cardId || !amount ) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // 🔐 STEP 1: VERIFY PAYMENT WITH PAYSTACK
-    const verifyRes = await axios.get(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-        },
-      }
-    );
-
-    const paymentData = verifyRes.data.data;
-
-    // ❌ If payment not successful, reject
-    if (paymentData.status !== "success") {
-      return res.status(400).json({ message: "Payment not verified" });
-    }
-
-    const paidAmount = paymentData.amount / 100;
-
-    // 🔒 Prevent mismatched amount fraud
-    if (Number(amount) !== paidAmount) {
-      return res.status(400).json({ message: "Amount mismatch detected" });
-    }
-
+ 
 
     const userRef = db.collection("users").doc(userId);
     const cardRef = userRef.collection("tickets").doc(cardId);
     const cardRef2 = db.collection("tickets").doc(cardId);
 
     await db.runTransaction(async (tx) => {
+      // 🔹 Read current balance
       const cardDoc = await tx.get(cardRef);
       const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
-      const newBalance = oldBalance + paidAmount;
+      const newBalance = oldBalance + Number(amount);
 
-      // 💰 Update wallet balance
+      // 🔹 Update balances
       tx.set(cardRef, { balance: newBalance }, { merge: true });
       tx.set(cardRef2, { balance: newBalance }, { merge: true });
 
-      // 🔔 Notifications
-      tx.update(userRef, {
-        notification: true,
-        inappnotification: true,
-      });
+      // 🔹 Update user notifications
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
 
-      // 🧾 User transaction log
+      // 🔹 Add user transaction log
       const userTxnRef = userRef.collection("Transactions").doc();
       tx.set(userTxnRef, {
-        amount: paidAmount,
+        amount,
         balance: newBalance,
         cardNumber: cardId,
         status: "ticketFund",
         date: admin.firestore.FieldValue.serverTimestamp(),
         cardType: "tickets",
-        paymentMethod: "paystack",
+        paymentMethod: "bank",
         firstname,
         lastname,
-        transactionNo: transaction_id || reference,
+        transactionNo: transaction_id || `txn-${Date.now()}`,
+        businessType: "ticket",
       });
 
-      // 🌍 Global transaction log
+
+      // 🔹 Add global transaction log
       const allTxnRef = db.collection("AllTransaction").doc();
       tx.set(allTxnRef, {
-        amount: paidAmount,
+        amount,
         cardType: "tickets",
         date: admin.firestore.FieldValue.serverTimestamp(),
         redeemer: { name: firstname + " " + lastname },
-        transactionNo: transaction_id || reference,
+        transactionNo: transaction_id || `txn-${Date.now()}`,
       });
     });
 
-    return res.json({
-      success: true,
-      message: "Wallet funded successfully",
-    });
-
+    res.json({ success: true, message: "Payment recorded successfully" });
   } catch (error) {
-    console.error(error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    console.error(error.message);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
-
-// app.post("/fund-ticket", async (req, res) => {
-//   try {
-//     const { userId, cardId, firstname, lastname, amount, status, transaction_id } = req.body;
-
-//     // if (!userId || !cardId || !amount || !status) {
-//     //   return res.status(400).json({ message: "Missing required fields" });
-//     // }
-
-//     if (status !== "successful") {
-//       return res.status(400).json({ message: "Payment not successful" });
-//     }
-
-//     const userRef = db.collection("users").doc(userId);
-//     const cardRef = userRef.collection("tickets").doc(cardId);
-//     const cardRef2 = db.collection("tickets").doc(cardId);
-
-//     await db.runTransaction(async (tx) => {
-//       // 🔹 Read current balance
-//       const cardDoc = await tx.get(cardRef);
-//       const oldBalance = cardDoc.exists ? cardDoc.data().balance || 0 : 0;
-//       const newBalance = oldBalance + Number(amount);
-
-//       // 🔹 Update balances
-//       tx.set(cardRef, { balance: newBalance }, { merge: true });
-//       tx.set(cardRef2, { balance: newBalance }, { merge: true });
-
-//       // 🔹 Update user notifications
-//       tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
-
-//       // 🔹 Add user transaction log
-//       const userTxnRef = userRef.collection("Transactions").doc();
-//       tx.set(userTxnRef, {
-//         amount,
-//         balance: newBalance,
-//         cardNumber: cardId,
-//         status: "ticketFund",
-//         date: admin.firestore.FieldValue.serverTimestamp(),
-//         cardType: "tickets",
-//         paymentMethod: "bank",
-//         firstname,
-//         lastname,
-//         transactionNo: transaction_id || `txn-${Date.now()}`,
-//         businessType: "ticket",
-//       });
-
-
-//       // 🔹 Add global transaction log
-//       const allTxnRef = db.collection("AllTransaction").doc();
-//       tx.set(allTxnRef, {
-//         amount,
-//         cardType: "tickets",
-//         date: admin.firestore.FieldValue.serverTimestamp(),
-//         redeemer: { name: firstname + " " + lastname },
-//         transactionNo: transaction_id || `txn-${Date.now()}`,
-//       });
-//     });
-
-//     res.json({ success: true, message: "Payment recorded successfully" });
-//   } catch (error) {
-//     console.error(error.message);
-//     res.status(500).json({ success: false, message: "Internal server error" });
-//   }
-// });
 
 // app.post("/bank-withdrawal", async (req, res) => {
 //   try {
@@ -915,6 +704,7 @@ app.post("/fund-ticket", async (req, res) => {
 // =========================
 // Initiate Bank Withdrawal
 // =========================
+
 
 app.post("/bank-withdrawal", async (req, res) => {
   try {
@@ -2303,58 +2093,58 @@ app.post("/init-paystack", async (req, res) => {
   }
 });
 
-app.post("/resolve-bvn", async (req, res) => {
-try {
-    const { account_number, bank_code, bvn } = req.body;
+// app.post("/resolve-bvn", async (req, res) => {
+// try {
+//     const { account_number, bank_code, bvn } = req.body;
 
-    // 🔒 validate input
-    if (!account_number || !bank_code || !bvn) {
-      return res.status(400).json({
-        success: false,
-        message: "account_number, bank_code and bvn are required",
-      });
-    }
+//     // 🔒 validate input
+//     if (!account_number || !bank_code || !bvn) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "account_number, bank_code and bvn are required",
+//       });
+//     }
 
-    // 🚀 PAYSTACK REQUEST (VERY IMPORTANT FORMAT)
-    const response = await axios.get(
-      "https://api.paystack.co/bank/match_bvn",
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-        },
-        params: {
-          account_number: account_number,
-          bank_code: bank_code,
-          bvn: bvn,
-        },
-      }
-    );
+//     // 🚀 PAYSTACK REQUEST (VERY IMPORTANT FORMAT)
+//     const response = await axios.get(
+//       "https://api.paystack.co/bank/match_bvn",
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+//         },
+//         params: {
+//           account_number: account_number,
+//           bank_code: bank_code,
+//           bvn: bvn,
+//         },
+//       }
+//     );
 
-    const result = response.data;
+//     const result = response.data;
 
-    console.log("Paystack BVN Match:", result);
+//     console.log("Paystack BVN Match:", result);
 
-    return res.json({
-      success: true,
-      match: result.data.match, // true or false
-      message: result.data.match
-        ? "BVN matches this account"
-        : "BVN does NOT match this account",
-    });
+//     return res.json({
+//       success: true,
+//       match: result.data.match, // true or false
+//       message: result.data.match
+//         ? "BVN matches this account"
+//         : "BVN does NOT match this account",
+//     });
 
-  } catch (error) {
-    console.error("BVN MATCH ERROR:", error.response?.data || error.message);
+//   } catch (error) {
+//     console.error("BVN MATCH ERROR:", error.response?.data || error.message);
 
-    return res.status(500).json({
-      success: false,
-      message:
-        error.response?.data?.message || "BVN match verification failed",
-    });
-  }
+//     return res.status(500).json({
+//       success: false,
+//       message:
+//         error.response?.data?.message || "BVN match verification failed",
+//     });
+//   }
 
 
   
-});
+// });
 
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
