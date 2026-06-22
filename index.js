@@ -57,9 +57,8 @@ app.post("/fund-wallet", async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // if (status !== "successful") {
-    //   return res.status(400).json({ message: "Payment not successful" });
-    // }
+
+    
 
     const userRef = db.collection("users").doc(userId);
     const cardRef = userRef.collection("Cards").doc(cardId);
@@ -2092,6 +2091,832 @@ app.post("/init-paystack", async (req, res) => {
     });
   }
 });
+
+app.post("/transfer-scan", async (req, res) => {
+
+  try {
+    const {
+      senderPhone,
+      receiverPhone,
+      senderCardNumber,
+      receiverCardNumber,
+      amount,
+      transactionNo,
+      senderFirstname,
+      senderLastname,
+    } = req.body;
+
+    const date = admin.firestore.FieldValue.serverTimestamp();
+
+    // Validation
+    if (!senderPhone || !receiverPhone || !amount || !transactionNo) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const sendAmount = Number(amount);
+    if (sendAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount",
+      });
+    }
+
+    const senderCardRef = db
+      .collection("users")
+      .doc(senderPhone)
+      .collection("Cards")
+      .doc(senderCardNumber);
+
+    const receiverCardRef = db
+      .collection("users")
+      .doc(receiverPhone)
+      .collection("Cards")
+      .doc(receiverCardNumber);
+
+    const senderUserRef = db.collection("users").doc(senderPhone);
+    const receiverUserRef = db.collection("users").doc(receiverPhone);
+
+    // 🔐 TRANSACTION
+    await db.runTransaction(async (tx) => {
+      const senderSnap = await tx.get(senderCardRef);
+      const receiverSnap = await tx.get(receiverCardRef);
+
+      if (!senderSnap.exists || !receiverSnap.exists) {
+        throw new Error("Card not found");
+      }
+
+      const senderBal = Number(senderSnap.data().balance);
+      const receiverBal = Number(receiverSnap.data().balance);
+
+      if (senderBal < sendAmount) {
+        throw new Error("Insufficient balance");
+      }
+
+      // Update balances
+      tx.update(senderCardRef, {
+        balance: senderBal - sendAmount,
+      });
+
+      tx.update(receiverCardRef, {
+        balance: receiverBal + sendAmount,
+      });
+
+      // Sender transaction
+      tx.set(
+        senderUserRef.collection("Transactions").doc(transactionNo),
+        {
+          amount: sendAmount,
+          cardNumber: senderCardNumber,
+          status: "sender",
+          cardType: "wallet",
+          paymentMethod: "scan",
+          receiverPhone,
+          transactionNo,
+          date,
+        }
+      );
+
+      // Receiver transaction
+      tx.set(
+        receiverUserRef.collection("Transactions").doc(transactionNo),
+        {
+          amount: sendAmount,
+          cardNumber: receiverCardNumber,
+          status: "receiver",
+          cardType: "wallet",
+          paymentMethod: "scan",
+          senderPhone,
+          transactionNo,
+          date,
+        }
+      );
+
+      // Global log
+      tx.set(db.collection("AllTransaction").doc(transactionNo), {
+        amount: sendAmount,
+        transactionNo,
+        status: "completed",
+        cardType: "wallet",
+        paymentMethod: "scan",
+        date,
+        sender: {
+          phone: senderPhone,
+          firstname: senderFirstname,
+          lastname: senderLastname,
+        },
+        receiver: {
+          phone: receiverPhone,
+        },
+      });
+
+      // Notifications flags
+      tx.update(receiverUserRef, {
+        notification: true,
+        inappnotification: true,
+      });
+
+      tx.update(senderUserRef, {
+        notification: true,
+      });
+    });
+
+    // 🔔 PUSH NOTIFICATION
+    const receiverSnap = await receiverUserRef.get();
+    const token = receiverSnap.data()?.fcm;
+
+    if (token) {
+      await messaging.send({
+        token,
+        notification: {
+          title: "Money Received 💰",
+          body: `₦${sendAmount.toLocaleString()} credited to your wallet`,
+        },
+        data: {
+          type: "receive",
+          transactionNo,
+          amount: sendAmount.toString(),
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Transfer successful",
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Transfer failed",
+    });
+  }
+})
+
+app.post("/ticket-scan", async (req, res) => {
+ try {
+    const {
+      redeemerPhone,
+      merchantPhone,
+      ticketCardNumber,
+      merchantCardNumber,
+      amount,
+      transactionNo,
+      businessType,
+      merchantname,
+      merchantLastname,
+      redeemerFirstname,
+      redeemerLastname,
+    } = req.body;
+
+    const date = admin.firestore.FieldValue.serverTimestamp();
+
+    const ticketAmount = Number(amount);
+
+    // ✅ Validation
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    if (ticketAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount",
+      });
+    }
+
+    const ticketRef = db
+      .collection("users")
+      .doc(redeemerPhone)
+      .collection("tickets")
+      .doc(ticketCardNumber);
+
+    const merchantRef = db
+      .collection("users")
+      .doc(merchantPhone)
+      .collection("Merchant")
+      .doc(merchantCardNumber);
+
+    const merchantGlobalRef = db
+      .collection("MerchantCards")
+      .doc(merchantCardNumber);
+
+    const redeemerUserRef = db.collection("users").doc(redeemerPhone);
+    const merchantUserRef = db.collection("users").doc(merchantPhone);
+
+    // 🔐 TRANSACTION
+    await db.runTransaction(async (tx) => {
+      const ticketSnap = await tx.get(ticketRef);
+      const merchantSnap = await tx.get(merchantRef);
+      const merchantGlobalSnap = await tx.get(merchantGlobalRef);
+
+      if (!ticketSnap.exists || !merchantSnap.exists) {
+        throw new Error("Ticket or merchant card not found");
+      }
+
+      const ticketBal = Number(ticketSnap.data().balance);
+      const merchantBal = Number(merchantSnap.data().balance);
+      const merchantGlobalBal = Number(
+        merchantGlobalSnap.data()?.balance || 0
+      );
+
+      if (ticketBal < ticketAmount) {
+        throw new Error("Insufficient ticket balance");
+      }
+
+      // ✅ Update balances
+      tx.update(ticketRef, {
+        balance: ticketBal - ticketAmount,
+      });
+
+      tx.update(merchantRef, {
+        balance: merchantBal + ticketAmount,
+      });
+
+      tx.update(merchantGlobalRef, {
+        balance: merchantGlobalBal + ticketAmount,
+      });
+
+      // Redeemer transaction
+      tx.set(
+        redeemerUserRef.collection("Transactions").doc(transactionNo),
+        {
+          amount: ticketAmount,
+          cardType: "ticket",
+          status: "ticket",
+          businessType,
+          transactionNo,
+          date,
+        }
+      );
+
+      // Merchant transaction
+      tx.set(
+        merchantUserRef.collection("Transactions").doc(transactionNo),
+        {
+          amount: ticketAmount,
+          cardType: "ticket",
+          status: "merchant",
+          businessType,
+          transactionNo,
+          date,
+        }
+      );
+
+      // Global log
+      tx.set(db.collection("AllTransaction").doc(transactionNo), {
+        amount: ticketAmount,
+        cardType: "ticket",
+        businessType,
+        transactionNo,
+        date,
+        redeemer: {
+          phone: redeemerPhone,
+          firstname: redeemerFirstname,
+          lastname: redeemerLastname,
+        },
+        merchant: {
+          phone: merchantPhone,
+          firstname: merchantname,
+          lastname: merchantLastname,
+        },
+      });
+
+      // Notifications flags
+      tx.update(merchantUserRef, {
+        notification: true,
+        inappnotification: true,
+      });
+
+      tx.update(redeemerUserRef, {
+        notification: true,
+      });
+    });
+
+    // 🔔 PUSH NOTIFICATION
+    const merchantSnap = await merchantUserRef.get();
+    const merchantToken = merchantSnap.data()?.fcm;
+
+    if (merchantToken) {
+      await messaging.send({
+        token: merchantToken,
+        notification: {
+          title: "Ticket Redeemed 🎫",
+          body: `₦${ticketAmount.toLocaleString()} ticket payment received`,
+        },
+        data: {
+          type: "ticket",
+          transactionNo,
+          amount: ticketAmount.toString(),
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "successful",
+    });
+
+  } catch (error) {
+    console.error("Redeem ticket error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Ticket redemption failed",
+    });
+  }
+})
+
+
+app.post("/voucher-scan", async (req, res) => {
+try {
+    const {
+      redeemerPhone,
+      merchantPhone,
+      voucherCardNumber,
+      merchantCardNumber,
+      amount,
+      transactionNo,
+      businessType,
+      merchantname,
+      merchantLastname,
+      redeemerFirstname,
+      redeemerLastname,
+    } = req.body;
+
+    const date = admin.firestore.FieldValue.serverTimestamp();
+    const redeemAmount = Number(amount);
+
+    // ✅ Validation
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    if (redeemAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount",
+      });
+    }
+
+    const voucherRef = db
+      .collection("users")
+      .doc(redeemerPhone)
+      .collection("voucher")
+      .doc(voucherCardNumber);
+
+    const merchantRef = db
+      .collection("users")
+      .doc(merchantPhone)
+      .collection("Merchant")
+      .doc(merchantCardNumber);
+
+    const merchantGlobalRef = db
+      .collection("MerchantCards")
+      .doc(merchantCardNumber);
+
+    const redeemerUserRef = db.collection("users").doc(redeemerPhone);
+    const merchantUserRef = db.collection("users").doc(merchantPhone);
+
+    // 🔐 TRANSACTION
+    await db.runTransaction(async (tx) => {
+      const voucherSnap = await tx.get(voucherRef);
+      const merchantSnap = await tx.get(merchantRef);
+      const merchantGlobalSnap = await tx.get(merchantGlobalRef);
+
+      if (!voucherSnap.exists || !merchantSnap.exists) {
+        throw new Error("Voucher or merchant card not found");
+      }
+
+      const voucherBal = Number(voucherSnap.data().balance);
+      const merchantBal = Number(merchantSnap.data().balance);
+      const merchantGlobalBal = Number(
+        merchantGlobalSnap.data()?.balance || 0
+      );
+
+      if (voucherBal < redeemAmount) {
+        throw new Error("Insufficient voucher balance");
+      }
+
+      // ✅ Update balances
+      tx.update(voucherRef, {
+        balance: voucherBal - redeemAmount,
+      });
+
+      tx.update(merchantRef, {
+        balance: merchantBal + redeemAmount,
+      });
+
+      // 🔥 FIXED (was wrong in your original code)
+      tx.update(merchantGlobalRef, {
+        balance: merchantGlobalBal + redeemAmount,
+      });
+
+      // Redeemer transaction
+      tx.set(
+        redeemerUserRef.collection("Transactions").doc(transactionNo),
+        {
+          amount: redeemAmount,
+          cardType: "voucher",
+          status: "redeem",
+          businessType,
+          transactionNo,
+          date,
+        }
+      );
+
+      // Merchant transaction
+      tx.set(
+        merchantUserRef.collection("Transactions").doc(transactionNo),
+        {
+          amount: redeemAmount,
+          cardType: "voucher",
+          status: "merchant",
+          businessType,
+          transactionNo,
+          date,
+        }
+      );
+
+      // Global transaction log
+      tx.set(db.collection("AllTransaction").doc(transactionNo), {
+        amount: redeemAmount,
+        cardType: "voucher",
+        businessType,
+        transactionNo,
+        date,
+        redeemer: {
+          phone: redeemerPhone,
+          firstname: redeemerFirstname,
+          lastname: redeemerLastname,
+        },
+        merchant: {
+          phone: merchantPhone,
+          firstname: merchantname,
+          lastname: merchantLastname,
+        },
+      });
+
+      // Notification flags
+      tx.update(merchantUserRef, {
+        notification: true,
+        inappnotification: true,
+      });
+
+      tx.update(redeemerUserRef, {
+        notification: true,
+      });
+    });
+
+    // 🔔 PUSH NOTIFICATION
+    const merchantSnap = await merchantUserRef.get();
+    const merchantToken = merchantSnap.data()?.fcm;
+
+    if (merchantToken) {
+      await messaging.send({
+        token: merchantToken,
+        notification: {
+          title: "Voucher Redeemed 🎟️",
+          body: `₦${redeemAmount.toLocaleString()} voucher redeemed`,
+        },
+        data: {
+          type: "voucher",
+          transactionNo,
+          amount: redeemAmount.toString(),
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Voucher redeemed successfully",
+    });
+
+  } catch (error) {
+    console.error("Redeem voucher error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Voucher redemption failed",
+    });
+  }
+})
+
+
+
+app.post("/save-giver", async (req, res) => {
+
+    const date = admin.firestore.FieldValue.serverTimestamp();
+
+  try {
+    const {
+      phonenumber,
+      donorName,
+      hashTag,
+      goodwill,
+      amountCare,
+      beneficiariesCareNum,
+      beneficiariesCare,
+      typesOfgiveawayText2,
+      selectCardCares,
+      firstCard,
+      transactionNo,
+      religionTextOtherMetrics,
+      genderTextOthermetrics,
+      ageDropDownText,
+      universityText,
+      facultyText,
+      locationText,
+      locationTextStates,
+      textCode,
+      language,
+    } = req.body;
+
+    // ---------------- VALIDATION ----------------
+    if (!donorName?.trim()) {
+      return res.status(400).json({ success: false, message: "Enter donor's name" });
+    }
+
+    if (!hashTag?.trim()) {
+      return res.status(400).json({ success: false, message: "Enter hashtag" });
+    }
+
+    if (!goodwill?.trim()) {
+      return res.status(400).json({ success: false, message: "Enter goodwill message" });
+    }
+
+    if (
+      beneficiariesCare === "beneficiaries" ||
+      beneficiariesCare === "alanfani" ||
+      beneficiariesCare === "mai anfana" ||
+      beneficiariesCare === "onye na erite uru"
+    ) {
+      return res.status(400).json({ success: false, message: "Select beneficiaries" });
+    }
+
+    const amount = Number(amountCare);
+    const deductedAmount = amount * 0.05;
+    const amountAfterDeduction = amount - deductedAmount;
+    const amountPerUser = amountAfterDeduction / beneficiariesCareNum;
+    let remainingBalance = 0;
+
+    // ---------------- QUERY BUILD ----------------
+    let usersQuery = db
+      .collection("voucher")
+      .where("typesOfgiveaway", "==", typesOfgiveawayText2);
+
+    const ignoredReligions = ["religion", "ẹsin", "addini", "okpukpe"];
+    const ignoredGenders = ["gender", "ẹ̀ya", "jinsi", "agbacha"];
+    const ignoredStates = ["location", "ipinle", "jihar", "steeti"];
+    const ignoredLGAs = ["local govt", "agbegbe", "wurin", "mpaghara"];
+
+    if (religionTextOtherMetrics && !ignoredReligions.includes(religionTextOtherMetrics)) {
+      usersQuery = usersQuery.where("religion", "==", religionTextOtherMetrics);
+    }
+
+    if (genderTextOthermetrics && !ignoredGenders.includes(genderTextOthermetrics)) {
+      usersQuery = usersQuery.where("gender", "==", genderTextOthermetrics);
+    }
+
+    if (
+      ageDropDownText &&
+      !["select your age range", "ọjọ ori", "shekaru", "afọ"].includes(ageDropDownText)
+    ) {
+      usersQuery = usersQuery.where("age", "==", ageDropDownText);
+    }
+
+    if (universityText && universityText !== "university (optional)") {
+      usersQuery = usersQuery.where("university", "==", universityText);
+    }
+
+    if (facultyText && facultyText !== "faculty") {
+      usersQuery = usersQuery.where("faculty", "==", facultyText);
+    }
+
+    if (
+      (!universityText || universityText === "university (optional)") &&
+      (!facultyText || facultyText === "faculty")
+    ) {
+      if (locationText && !ignoredStates.includes(locationText)) {
+        usersQuery = usersQuery.where("state", "==", locationText);
+      }
+
+      if (locationTextStates && !ignoredLGAs.includes(locationTextStates)) {
+        usersQuery = usersQuery.where("localGOVT", "==", locationTextStates);
+      }
+    }
+
+    if (textCode?.trim()) {
+      usersQuery = usersQuery.where("code", "==", textCode);
+    }
+
+    // ---------------- FETCH USERS ----------------
+    const usersSnapshot = await usersQuery.get();
+    const applicants = usersSnapshot.docs.map((doc) => ({
+      uid: doc.id,
+      ...doc.data(),
+    }));
+
+    if (applicants.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No eligible users found",
+      });
+    }
+
+    // ---------------- RANDOM SELECTION ----------------
+    const shuffled = [...applicants].sort(() => Math.random() - 0.5);
+    let selectedUsers = shuffled.slice(0, beneficiariesCareNum);
+
+    // ---------------- FILTER ALREADY RECEIVED ----------------
+    const giveawayDocRef = db.collection("gottenGiveaway").doc("allUsers");
+    const giveawayDoc = await giveawayDocRef.get();
+    const existingUsers = giveawayDoc.exists ? giveawayDoc.data()?.users || [] : [];
+
+    if (textCode?.trim()) {
+      selectedUsers = selectedUsers.filter(
+        (u) => !existingUsers.some((e) => e.phonenumber === u.phonenumber && e.code === textCode)
+      );
+    } else {
+      selectedUsers = selectedUsers.filter(
+        (u) => !existingUsers.some((e) => e.phonenumber === u.phonenumber)
+      );
+    }
+
+    if (selectedUsers.length < beneficiariesCareNum) {
+      remainingBalance =
+        amountAfterDeduction - selectedUsers.length * amountPerUser;
+    }
+
+    // ---------------- CHECK SENDER BALANCE ----------------
+    const senderCardRef = db.collection("Cards").doc(selectCardCares);
+    const senderUserCardRef = db
+      .collection("users")
+      .doc(phonenumber)
+      .collection("Cards")
+      .doc(selectCardCares);
+
+    const [senderDoc, senderDoc2] = await Promise.all([
+      senderCardRef.get(),
+      senderUserCardRef.get(),
+    ]);
+
+    if (!senderDoc.exists || !senderDoc2.exists) {
+      return res.status(404).json({
+        success: false,
+        message: "Sender card not found",
+      });
+    }
+
+    const senderBalance = senderDoc.data()?.balance || 0;
+
+    if (senderBalance < amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient funds",
+      });
+    }
+
+    const senderBalanceUpdate =
+      senderBalance - (amountAfterDeduction - remainingBalance);
+
+    // ---------------- FIRESTORE BATCH ----------------
+    const batch = db.batch();
+
+    batch.update(senderCardRef, { balance: senderBalanceUpdate });
+    batch.update(senderUserCardRef, { balance: senderBalanceUpdate });
+
+    const simplifiedUsers = [];
+
+    for (const user of selectedUsers) {
+      const recipientType =
+        typesOfgiveawayText2 === "ticket" ? "tickets" : "voucher";
+
+      const recipientVoucherRef = db
+        .collection(recipientType)
+        .doc(user.cardNumber);
+
+      const recipientVoucherUserRef = db
+        .collection("users")
+        .doc(user.phonenumber)
+        .collection(recipientType)
+        .doc(user.cardNumber);
+
+      const recipientUserRef = db.collection("users").doc(user.phonenumber);
+
+      const giveawayRef = db
+        .collection("users")
+        .doc(user.phonenumber)
+        .collection("giveaways")
+        .doc();
+
+      const txRef = db
+        .collection("users")
+        .doc(user.phonenumber)
+        .collection("Transactions")
+        .doc();
+
+      const newBalance = (user.balance || 0) + amountPerUser;
+
+      batch.update(recipientVoucherRef, { balance: newBalance });
+      batch.update(recipientVoucherUserRef, { balance: newBalance });
+      batch.update(recipientUserRef, { receivedGiveaway: true });
+
+      batch.set(giveawayRef, {
+        typesOfgiveaway: typesOfgiveawayText2,
+        hashtag: "#transfrcares_" + hashTag,
+        giverName: donorName,
+        goodwillMessages: goodwill,
+        createdAt: date,
+        phonenumber,
+        amountsent: amountPerUser,
+      });
+
+      batch.set(txRef, {
+        balance: newBalance,
+        cardNumber: user.cardNumber,
+        amount: amountPerUser,
+        date,
+        firstname: "Transfr-Cares",
+        lastname: "",
+        status: "redeem voucher",
+        businessType:
+          typesOfgiveawayText2 === "shopping voucher" ? "store" : "resturant",
+        transactionNo,
+        cardType: "voucher",
+        paymentMethod: "transfr",
+      });
+
+      simplifiedUsers.push({
+        phonenumber: user.phonenumber,
+        code: textCode,
+      });
+
+      // 🔔 push notification (outside batch but inside loop)
+      if (user.fcm) {
+        await messaging.send({
+          token: user.fcm,
+          notification: {
+            title: "You received a Transfr-Cares gift!",
+            body: `${amountPerUser} has been sent to your voucher.`,
+          },
+        });
+      }
+    }
+
+    batch.set(
+      giveawayDocRef,
+      {
+        users: admin.firestore.FieldValue.arrayUnion(...simplifiedUsers),
+      },
+      { merge: true }
+    );
+
+    const senderTxRef = db
+      .collection("users")
+      .doc(phonenumber)
+      .collection("Transactions")
+      .doc();
+
+    batch.set(senderTxRef, {
+      balance: senderBalanceUpdate,
+      cardNumber: selectCardCares,
+      amount,
+      date,
+      firstname: "Transfr-Cares",
+      lastname: "",
+      status: "sender",
+      transactionNo,
+      cardType: "voucher",
+      paymentMethod: "transfr",
+    });
+
+    await batch.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: "All monies sent to beneficiaries",
+      remainingBalance,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "An error occurred",
+    });
+  }
+})
 
 // app.post("/resolve-bvn", async (req, res) => {
 // try {
