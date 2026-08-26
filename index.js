@@ -3692,12 +3692,12 @@ app.post("/create-xpress-wallet", async (req, res) => {
       `${process.env.XPRESS_BASE_URL}/wallet`,
       {
         tier: "TIER_1",
-        bvn: 22864746091,
+        bvn: 22864746093,
         firstName,
         lastName,
         dateOfBirth: formattedDob,
-        phoneNumber: 2349153525725,          // use cleaned phone
-        email:'mshittu03@gmail.com',                            // use provided email
+        phoneNumber: 2349153525724,          // use cleaned phone
+        email:'mshittu014@gmail.com',                            // use provided email
         address,
         metadata: { firebaseUserId: userId }
       },
