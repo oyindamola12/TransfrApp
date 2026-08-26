@@ -3355,7 +3355,7 @@ app.post("/create-xpress-wallet", async (req, res) => {
         firstName,
         lastName,
         dateOfBirth: formattedDob,
-        phoneNumber: cleanPhone,
+        phoneNumber: 2349153525725,
         email,
         address,
         metadata: { firebaseUserId: userId }
