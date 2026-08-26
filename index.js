@@ -1595,17 +1595,21 @@ app.post("/bank-withdrawal", async (req, res) => {
         {
 
           headers: {
+        'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+          // headers: {
 
-            "Content-Type":
-              "application/json",
+          //   "Content-Type":
+          //     "application/json",
 
-            "X-Access-Token":
-              process.env.XPRESS_ACCESS_TOKEN,
+          //   "X-Access-Token":
+          //     process.env.XPRESS_ACCESS_TOKEN,
 
-            "X-Refresh-Token":
-              process.env.XPRESS_REFRESH_TOKEN
+          //   "X-Refresh-Token":
+          //     process.env.XPRESS_REFRESH_TOKEN
 
-          }
+          // }
 
         }
 
@@ -2508,18 +2512,22 @@ app.post("/create-xpress-wallet", async (req, res) => {
 
         {
 
-          headers: {
+          // headers: {
 
-            "Content-Type":
-              "application/json",
+          //   "Content-Type":
+          //     "application/json",
 
-            "X-Access-Token":
-              process.env.PROVIDUS_SECRET_KEY,
+          //   "X-Access-Token":
+          //     process.env.PROVIDUS_SECRET_KEY, 
 
-            "X-Refresh-Token":
-              process.env.XPRESS_REFRESH_TOKEN
+          //   "X-Refresh-Token":
+          //     process.env.XPRESS_REFRESH_TOKEN
 
-          }
+          // }]
+       headers: {
+      'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+      'Content-Type': 'application/json',
+    },
 
         }
 
@@ -3479,16 +3487,23 @@ app.post("/create-xpress-tier2-wallet", async (req, res) => {
         },
 
         {
-          headers: {
-            "Content-Type":
-              "application/json",
+          // headers: {
+          //   "Content-Type":
+          //     "application/json",
 
-            "X-Access-Token":
-              process.env.XPRESS_ACCESS_TOKEN,
+          //   "X-Access-Token":
+          //     process.env.XPRESS_ACCESS_TOKEN,
 
-            "X-Refresh-Token":
-              process.env.XPRESS_REFRESH_TOKEN
-          }
+          //   "X-Refresh-Token":
+          //     process.env.XPRESS_REFRESH_TOKEN
+          // }
+
+
+                headers: {
+        'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+
         }
 
       );
@@ -3757,18 +3772,24 @@ app.post("/create-xpress-tier2-wallet", async (req, res) => {
 
           {
 
-            headers: {
+            // headers: {
 
-              "Content-Type":
-                "application/json",
+            //   "Content-Type":
+            //     "application/json",
 
-              "X-Access-Token":
-                process.env.XPRESS_ACCESS_TOKEN,
+            //   "X-Access-Token":
+            //     process.env.XPRESS_ACCESS_TOKEN,
 
-              "X-Refresh-Token":
-                process.env.XPRESS_REFRESH_TOKEN
+            //   "X-Refresh-Token":
+            //     process.env.XPRESS_REFRESH_TOKEN
 
-            }
+            // }
+
+                  headers: {
+        'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+
 
           }
 
