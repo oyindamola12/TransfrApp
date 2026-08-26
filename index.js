@@ -2314,9 +2314,959 @@ app.post('/register-merchant', async (req, res) => {
 //   }
 // });
 
+// app.post("/create-xpress-wallet", async (req, res) => {
+//   try {
+
+//     const {
+//       userId,
+//       cardId,
+//       bvn,
+//       firstName,
+//       lastName,
+//       dateOfBirth,
+//       phoneNumber,
+//       email,
+//       address
+//     } = req.body;
+
+
+//     // =====================================================
+//     // CHECK REQUIRED FIELDS
+//     // =====================================================
+
+//     if (
+//       !userId ||
+//       !bvn ||
+//       !firstName ||
+//       !lastName ||
+//       !dateOfBirth ||
+//       !phoneNumber ||
+//       !email ||
+//       !address
+//     ) {
+
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields"
+//       });
+
+//     }
+
+
+//     // =====================================================
+//     // FIRESTORE REFERENCES
+//     // =====================================================
+
+//     const userRef =
+//       db.collection("users").doc(userId);
+
+//     const cardRef =
+//       userRef
+//         .collection("Cards")
+//         .doc(cardId);
+
+
+//     // =====================================================
+//     // GET USER
+//     // =====================================================
+
+//     const userDoc =
+//       await userRef.get();
+
+//         const cardDoc =
+//       await cardRef.get();
+
+
+//     if (!userDoc.exists) {
+
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found"
+//       });
+
+//     }
+
+
+//     const userData =
+//       userDoc.data();
+
+
+
+//     const cardData =
+//       cardDoc.data();
+
+
+//     // =====================================================
+//     // PREVENT DUPLICATE WALLET
+//     // =====================================================
+
+//     if (
+//       cardData.xpressWallet?.customerId &&
+//       cardData.xpressWallet?.tier === "TIER_1"
+//     ) {
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "User already has a TIER 1 account, please upgrade to Transfr Gold for better experience.",
+
+//         data:
+//           userData.xpressWallet
+
+//       });
+
+//     }
+
+
+//     if (
+//       userData.xpressWallet?.customerId &&
+//       userData.xpressWallet?.tier === "TIER_2"
+//     ) {
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "User already has a TIER 2 account, please upgrade to Transfr Platinum for better experience.",
+
+//         data:
+//           userData.xpressWallet
+
+//       });
+
+//     }
+
+
+//     if (
+//       userData.xpressWallet?.customerId &&
+//       userData.xpressWallet?.tier === "TIER_3"
+//     ) {
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "User already has a TIER 3 account.",
+
+//         data:
+//           userData.xpressWallet
+
+//       });
+
+//     }
+
+
+//     // =====================================================
+//     // GET CURRENT TRANSFR CREDIT
+//     // =====================================================
+
+//     const transfrCreditBalance =
+//       Number(
+//         userData.transfrCreditBalance || 0
+//       );
+
+
+//     console.log(
+//       "Existing Transfr Credit:",
+//       transfrCreditBalance
+//     );
+
+
+//     // =====================================================
+//     // CREATE XPRESS WALLET
+//     // =====================================================
+
+//     const xpressResponse =
+//       await axios.post(
+
+//         `${process.env.XPRESS_BASE_URL}/wallet`,
+
+//         {
+//           tier: "TIER_1",
+//           bvn,
+
+//           firstName,
+
+//           lastName,
+
+//           dateOfBirth,
+
+//           phoneNumber,
+
+//           email,
+
+//           address,
+
+//           metadata: {
+
+//             firebaseUserId:
+//               userId
+
+//           }
+
+//         },
+
+//         {
+
+//           // headers: {
+
+//           //   "Content-Type":
+//           //     "application/json",
+
+//           //   "X-Access-Token":
+//           //     process.env.PROVIDUS_SECRET_KEY, 
+
+//           //   "X-Refresh-Token":
+//           //     process.env.XPRESS_REFRESH_TOKEN
+
+//           // }]
+//        headers: {
+//       'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//       'Content-Type': 'application/json',
+//     },
+
+//         }
+
+//       );
+
+
+//     const xpressData =
+//       xpressResponse.data;
+
+
+//     // =====================================================
+//     // GET CUSTOMER + WALLET
+//     // =====================================================
+
+//     const customer =
+//       xpressData.customer;
+
+//     const wallet =
+//       xpressData.wallet;
+
+
+//     if (!customer?.id || !wallet?.id) {
+
+//       return res.status(500).json({
+
+//         success: false,
+
+//         message:
+//           "Xpress wallet was created but wallet information was not returned"
+
+//       });
+
+//     }
+
+
+//     // =====================================================
+//     // SAVE XPRESS WALLET FIRST
+//     // =====================================================
+
+//     await cardRef.set({
+
+//       xpressWallet: {
+
+//         customerId:
+//           customer.id,
+
+//         walletId:
+//           wallet.id,
+
+//         accountNumber:
+//           wallet.accountNumber,
+
+//         accountType:
+//           "Nuban",
+
+//         accountName:
+//           wallet.accountName,
+
+//         bankName:
+//           wallet.bankName,
+
+//         bankCode:
+//           wallet.bankCode,
+
+//         accountReference:
+//           wallet.accountReference,
+
+//         availableBalance:
+//           wallet.availableBalance || 0,
+
+//         bookedBalance:
+//           wallet.bookedBalance || 0,
+
+//         currency:
+//           wallet.currency,
+
+//         status:
+//           wallet.status,
+
+//         tier:
+//           customer.tier,
+
+//         createdAt:
+//           admin.firestore.FieldValue
+//             .serverTimestamp(),
+
+//         updatedAt:
+//           admin.firestore.FieldValue
+//             .serverTimestamp()
+
+//       }
+
+//     }, {
+
+//       merge: true
+
+//     });
+
+
+//     // =====================================================
+//     // NO TRANSFR CREDIT
+//     // =====================================================
+
+//     if (transfrCreditBalance <= 0) {
+
+//       await userRef.update({
+
+//         nubanEnabled: true,
+
+//         accountType: "tiered",
+
+//         tier: customer.tier,
+
+//         updatedAt:
+//           admin.firestore.FieldValue
+//             .serverTimestamp()
+
+//       });
+
+
+//       return res.json({
+
+//         success: true,
+
+//         message:
+//           "NUBAN wallet created successfully",
+
+//         data: {
+
+//           customerId:
+//             customer.id,
+
+//           walletId:
+//             wallet.id,
+
+//           accountNumber:
+//             wallet.accountNumber,
+
+//           accountName:
+//             wallet.accountName,
+
+//           bankName:
+//             wallet.bankName,
+
+//           bankCode:
+//             wallet.bankCode,
+
+//           accountReference:
+//             wallet.accountReference,
+
+//           availableBalance:
+//             wallet.availableBalance || 0,
+
+//           bookedBalance:
+//             wallet.bookedBalance || 0,
+
+//           status:
+//             wallet.status,
+
+//           transfrCreditTransferred:
+//             0
+
+//         }
+
+//       });
+
+//     }
+
+
+//     // =====================================================
+//     // CREDIT XPRESS WALLET
+//     // =====================================================
+
+//     const creditReference =
+//       `NUBAN-CREDIT-${userId}-${Date.now()}`;
+
+
+//     let creditResponse;
+
+
+//     try {
+
+//       creditResponse =
+//         await axios.post(
+
+//           `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+
+//           {
+
+//             amount:
+//               transfrCreditBalance,
+
+//             reference:
+//               creditReference,
+
+//             customerId:
+//               customer.id,
+
+//             metadata: {
+
+//               firebaseUserId:
+//                 userId,
+
+//               cardId,
+
+//               reason:
+//                 "Transfr Credit Migration",
+
+//               source:
+//                 "transfr_credit",
+
+//               originalBalance:
+//                 transfrCreditBalance
+
+//             }
+
+//           },
+
+//           {
+
+//             headers: {
+
+//               "Content-Type":
+//                 "application/json",
+
+//               "X-Access-Token":
+//                 process.env.PROVIDUS_SECRET_KEY,
+
+//               "X-Refresh-Token":
+//                 process.env.XPRESS_REFRESH_TOKEN
+
+//             }
+
+//           }
+
+//         );
+
+//     } catch (creditError) {
+
+//       console.error(
+//         "XPRESS CREDIT ERROR:",
+//         creditError.response?.data ||
+//         creditError.message
+//       );
+
+
+//       // IMPORTANT:
+//       // DO NOT CLEAR TRANSFR CREDIT.
+//       // The wallet exists, but the migration
+//       // has not completed.
+
+//       await userRef.update({
+
+//         nuban: true,
+
+//         accountType: "tiered",
+
+//         tier: customer.tier,
+
+//         walletMigrationStatus:
+//           "credit_failed",
+
+//         walletMigrationAmount:
+//           transfrCreditBalance,
+
+//         walletMigrationReference:
+//           creditReference,
+
+//         updatedAt:
+//           admin.firestore.FieldValue
+//             .serverTimestamp()
+
+//       });
+
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "NUBAN wallet created, but your existing Transfr credit could not be transferred yet.",
+
+//         data: {
+
+//           customerId:
+//             customer.id,
+
+//           walletId:
+//             wallet.id,
+
+//           accountNumber:
+//             wallet.accountNumber,
+
+//           transfrCredit:
+//             transfrCreditBalance,
+
+//           migrationStatus:
+//             "credit_failed"
+
+//         }
+
+//       });
+
+//     }
+
+
+//     // =====================================================
+//     // VERIFY XPRESS CREDIT
+//     // =====================================================
+
+//     if (
+//       !creditResponse.data ||
+//       creditResponse.data.status !== true
+//     ) {
+
+//       await userRef.update({
+
+//         nubanEnabled: true,
+
+//         accountType: "tiered",
+
+//         tier: customer.tier,
+
+//         walletMigrationStatus:
+//           "credit_failed",
+
+//         walletMigrationAmount:
+//           transfrCreditBalance,
+
+//         walletMigrationReference:
+//           creditReference
+
+//       });
+
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "NUBAN wallet created, but credit migration failed",
+
+//         data: {
+
+//           transfrCredit:
+//             transfrCreditBalance,
+
+//           migrationReference:
+//             creditReference
+
+//         }
+
+//       });
+
+//     }
+
+
+//     // =====================================================
+//     // XPRESS CREDIT SUCCESSFUL
+//     // =====================================================
+
+//     console.log(
+//       "XPRESS WALLET CREDIT SUCCESS:",
+//       creditResponse.data
+//     );
+
+
+//     // =====================================================
+//     // UPDATE FIRESTORE
+//     // =====================================================
+
+//     await db.runTransaction(async (tx) => {
+
+//       const freshUser =
+//         await tx.get(userRef);
+
+
+//       if (!freshUser.exists) {
+
+//         throw new Error(
+//           "User no longer exists"
+//         );
+
+//       }
+
+
+//       const freshUserData =
+//         freshUser.data();
+
+
+//       const currentCredit =
+//         Number(
+//           freshUserData
+//             .transfrCreditBalance || 0
+//         );
+
+
+//       // Prevent accidentally removing
+//       // a newer balance that may have
+//       // arrived during wallet creation.
+
+//       if (
+//         currentCredit !==
+//         transfrCreditBalance
+//       ) {
+
+//         throw new Error(
+//           "Transfr credit changed during wallet creation. Manual reconciliation required."
+//         );
+
+//       }
+
+
+//       // =================================================
+//       // CLEAR TRANSFR CREDIT
+//       // =================================================
+
+//       tx.update(
+
+//         userRef,
+
+//         {
+
+//           transfrCreditBalance: 0,
+
+//           nubanEnabled: true,
+
+//           accountType:
+//             "tiered",
+
+//           tier:
+//             customer.tier,
+
+//           walletMigrationStatus:
+//             "completed",
+
+//           walletMigrationAmount:
+//             transfrCreditBalance,
+
+//           walletMigrationReference:
+//             creditReference,
+
+//           updatedAt:
+//             admin.firestore.FieldValue
+//               .serverTimestamp()
+
+//         }
+
+//       );
+
+
+//       // =================================================
+//       // UPDATE CARD WALLET BALANCE
+//       // =================================================
+
+//       const currentWalletBalance =
+//         Number(
+//           wallet.availableBalance || 0
+//         );
+
+
+//       const newWalletBalance =
+//         currentWalletBalance +
+//         transfrCreditBalance;
+
+
+//       tx.set(
+
+//         cardRef,
+
+//         {
+
+//           "xpressWallet.availableBalance":
+//             newWalletBalance,
+
+//           "xpressWallet.updatedAt":
+//             admin.firestore.FieldValue
+//               .serverTimestamp()
+
+//         },
+
+//         {
+
+//           merge: true
+
+//         }
+
+//       );
+
+
+//       // =================================================
+//       // TRANSACTION RECORD
+//       // =================================================
+
+//       const transactionRef =
+//         userRef
+//           .collection("Transactions")
+//           .doc(creditReference);
+
+
+//       tx.set(
+
+//         transactionRef,
+
+//         {
+
+//           type:
+//             "TransfrCreditMigration",
+
+//           status:
+//             "success",
+
+//           amount:
+//             transfrCreditBalance,
+
+//           balance:
+//             newWalletBalance,
+
+//           balanceType:
+//             "xpress_wallet",
+
+//           paymentMethod:
+//             "transfr",
+
+//           transactionNo:
+//             creditReference,
+
+//           reference:
+//             creditReference,
+
+//           customerId:
+//             customer.id,
+
+//           walletId:
+//             wallet.id,
+
+//           accountNumber:
+//             wallet.accountNumber,
+
+//           date:
+//             admin.firestore.FieldValue
+//               .serverTimestamp()
+
+//         }
+
+//       );
+
+
+//       // =================================================
+//       // GLOBAL TRANSACTION
+//       // =================================================
+
+//       const globalTransactionRef =
+//         db
+//           .collection("AllTransaction")
+//           .doc(creditReference);
+
+
+//       tx.set(
+
+//         globalTransactionRef,
+
+//         {
+
+//           type:
+//             "TransfrCreditMigration",
+
+//           amount:
+//             transfrCreditBalance,
+
+//           userId,
+
+//           customerId:
+//             customer.id,
+
+//           walletId:
+//             wallet.id,
+
+//           reference:
+//             creditReference,
+
+//           status:
+//             "success",
+
+//           paymentMethod:
+//             "transfr",
+
+//           date:
+//             admin.firestore.FieldValue
+//               .serverTimestamp()
+
+//         }
+
+//       );
+
+
+//       // =================================================
+//       // LEDGER
+//       // =================================================
+
+//       const ledgerRef =
+//         db
+//           .collection("TransfrLedger")
+//           .doc(creditReference);
+
+
+//       tx.set(
+
+//         ledgerRef,
+
+//         {
+
+//           reference:
+//             creditReference,
+
+//           type:
+//             "NOMINAL_TO_NUBAN_MIGRATION",
+
+//           amount:
+//             transfrCreditBalance,
+
+//           userId,
+
+//           source:
+//             "transfr_credit",
+
+//           destination:
+//             "xpress_wallet",
+
+//           customerId:
+//             customer.id,
+
+//           walletId:
+//             wallet.id,
+
+//           accountNumber:
+//             wallet.accountNumber,
+
+//           status:
+//             "success",
+
+//           createdAt:
+//             admin.firestore.FieldValue
+//               .serverTimestamp()
+
+//         }
+
+//       );
+
+//     });
+
+
+//     // =====================================================
+//     // SUCCESS RESPONSE
+//     // =====================================================
+
+//     return res.json({
+
+//       success: true,
+
+//       message:
+//         transfrCreditBalance > 0
+//           ? "NUBAN wallet created and Transfr credit transferred successfully"
+//           : "NUBAN wallet created successfully",
+
+//       data: {
+
+//         customerId:
+//           customer.id,
+
+//         walletId:
+//           wallet.id,
+
+//         accountNumber:
+//           wallet.accountNumber,
+
+//         accountName:
+//           wallet.accountName,
+
+//         bankName:
+//           wallet.bankName,
+
+//         bankCode:
+//           wallet.bankCode,
+
+//         accountReference:
+//           wallet.accountReference,
+
+//         availableBalance:
+//           wallet.availableBalance || 0,
+
+//         bookedBalance:
+//           wallet.bookedBalance || 0,
+
+//         status:
+//           wallet.status,
+
+//         tier:
+//           customer.tier,
+
+//         transfrCreditTransferred:
+//           transfrCreditBalance,
+
+//         walletMigrationStatus:
+//           "completed"
+
+//       }
+
+//     });
+
+
+//   } catch (error) {
+
+//     console.error(
+//       "XPRESS CREATE WALLET ERROR:",
+//       error.response?.data ||
+//       error.message
+//     );
+
+
+//     return res.status(
+//       error.response?.status || 500
+//     ).json({
+
+//       success: false,
+
+//       message:
+//         error.response?.data?.message ||
+//         error.message ||
+//         "Unable to create Xpress wallet"
+
+//     });
+
+//   }
+
+// });
+
 app.post("/create-xpress-wallet", async (req, res) => {
   try {
-
     const {
       userId,
       cardId,
@@ -2329,940 +3279,331 @@ app.post("/create-xpress-wallet", async (req, res) => {
       address
     } = req.body;
 
-
-    // =====================================================
-    // CHECK REQUIRED FIELDS
-    // =====================================================
-
-    if (
-      !userId ||
-      !bvn ||
-      !firstName ||
-      !lastName ||
-      !dateOfBirth ||
-      !phoneNumber ||
-      !email ||
-      !address
-    ) {
-
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields"
-      });
-
+    // -------------------------------------------
+    // 1. VALIDATE & SANITIZE
+    // -------------------------------------------
+    if (!userId || !bvn || !firstName || !lastName || !dateOfBirth || !phoneNumber || !email || !address) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
+    // Remove all non-digit characters from phoneNumber and bvn
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    const cleanBvn = bvn.replace(/\D/g, '');
 
-    // =====================================================
-    // FIRESTORE REFERENCES
-    // =====================================================
+    if (cleanPhone.length < 10) {
+      return res.status(400).json({ success: false, message: "Phone number must have at least 10 digits" });
+    }
+    if (cleanBvn.length !== 11) {
+      return res.status(400).json({ success: false, message: "BVN must be 11 digits" });
+    }
 
-    const userRef =
-      db.collection("users").doc(userId);
+    // Ensure dateOfBirth is in YYYY-MM-DD format
+    const dob = new Date(dateOfBirth);
+    if (isNaN(dob.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid date of birth" });
+    }
+    const formattedDob = dob.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    const cardRef =
-      userRef
-        .collection("Cards")
-        .doc(cardId);
+    // -------------------------------------------
+    // 2. FIRESTORE REFERENCES
+    // -------------------------------------------
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef.collection("Cards").doc(cardId);
 
-
-    // =====================================================
-    // GET USER
-    // =====================================================
-
-    const userDoc =
-      await userRef.get();
-
-        const cardDoc =
-      await cardRef.get();
-
-
+    const [userDoc, cardDoc] = await Promise.all([userRef.get(), cardRef.get()]);
     if (!userDoc.exists) {
-
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    if (!cardDoc.exists) {
+      return res.status(404).json({ success: false, message: "Card not found" });
     }
 
+    const userData = userDoc.data();
+    const cardData = cardDoc.data();
 
-    const userData =
-      userDoc.data();
-
-
-
-    const cardData =
-      cardDoc.data();
-
-
-    // =====================================================
-    // PREVENT DUPLICATE WALLET
-    // =====================================================
-
-    if (
-      cardData.xpressWallet?.customerId &&
-      cardData.xpressWallet?.tier === "TIER_1"
-    ) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "User already has a TIER 1 account, please upgrade to Transfr Gold for better experience.",
-
-        data:
-          userData.xpressWallet
-
-      });
-
+    // -------------------------------------------
+    // 3. PREVENT DUPLICATE WALLET
+    // -------------------------------------------
+    const existingXpress = userData?.xpressWallet;
+    if (existingXpress) {
+      const tier = existingXpress.tier || "";
+      if (tier === "TIER_1") {
+        return res.status(400).json({ success: false, message: "User already has a TIER 1 account, please upgrade." });
+      }
+      if (tier === "TIER_2") {
+        return res.status(400).json({ success: false, message: "User already has a TIER 2 account, please upgrade to Platinum." });
+      }
+      if (tier === "TIER_3") {
+        return res.status(400).json({ success: false, message: "User already has a TIER 3 account." });
+      }
     }
 
+    // -------------------------------------------
+    // 4. GET TRANSFR CREDIT BALANCE
+    // -------------------------------------------
+    const transfrCreditBalance = Number(userData.transfrCreditBalance || 0);
+    console.log("Existing Transfr Credit:", transfrCreditBalance);
 
-    if (
-      userData.xpressWallet?.customerId &&
-      userData.xpressWallet?.tier === "TIER_2"
-    ) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "User already has a TIER 2 account, please upgrade to Transfr Platinum for better experience.",
-
-        data:
-          userData.xpressWallet
-
-      });
-
-    }
-
-
-    if (
-      userData.xpressWallet?.customerId &&
-      userData.xpressWallet?.tier === "TIER_3"
-    ) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "User already has a TIER 3 account.",
-
-        data:
-          userData.xpressWallet
-
-      });
-
-    }
-
-
-    // =====================================================
-    // GET CURRENT TRANSFR CREDIT
-    // =====================================================
-
-    const transfrCreditBalance =
-      Number(
-        userData.transfrCreditBalance || 0
-      );
-
-
-    console.log(
-      "Existing Transfr Credit:",
-      transfrCreditBalance
+    // -------------------------------------------
+    // 5. CREATE XPRESS WALLET (TIER 1)
+    // -------------------------------------------
+    const xpressResponse = await axios.post(
+      `${process.env.XPRESS_BASE_URL}/wallet`,
+      {
+        tier: "TIER_1",
+        bvn: cleanBvn,
+        firstName,
+        lastName,
+        dateOfBirth: formattedDob,
+        phoneNumber: cleanPhone,
+        email,
+        address,
+        metadata: { firebaseUserId: userId }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
     );
 
-
-    // =====================================================
-    // CREATE XPRESS WALLET
-    // =====================================================
-
-    const xpressResponse =
-      await axios.post(
-
-        `${process.env.XPRESS_BASE_URL}/wallet`,
-
-        {
-          tier: "TIER_1",
-          bvn,
-
-          firstName,
-
-          lastName,
-
-          dateOfBirth,
-
-          phoneNumber,
-
-          email,
-
-          address,
-
-          metadata: {
-
-            firebaseUserId:
-              userId
-
-          }
-
-        },
-
-        {
-
-          // headers: {
-
-          //   "Content-Type":
-          //     "application/json",
-
-          //   "X-Access-Token":
-          //     process.env.PROVIDUS_SECRET_KEY, 
-
-          //   "X-Refresh-Token":
-          //     process.env.XPRESS_REFRESH_TOKEN
-
-          // }]
-       headers: {
-      'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-      'Content-Type': 'application/json',
-    },
-
-        }
-
-      );
-
-
-    const xpressData =
-      xpressResponse.data;
-
-
-    // =====================================================
-    // GET CUSTOMER + WALLET
-    // =====================================================
-
-    const customer =
-      xpressData.customer;
-
-    const wallet =
-      xpressData.wallet;
-
+    const xpressData = xpressResponse.data;
+    const customer = xpressData.customer;
+    const wallet = xpressData.wallet;
 
     if (!customer?.id || !wallet?.id) {
-
       return res.status(500).json({
-
         success: false,
-
-        message:
-          "Xpress wallet was created but wallet information was not returned"
-
+        message: "Xpress wallet created but customer/wallet info missing"
       });
-
     }
 
-
-    // =====================================================
-    // SAVE XPRESS WALLET FIRST
-    // =====================================================
-
+    // -------------------------------------------
+    // 6. SAVE XPRESS WALLET TO FIRESTORE (card)
+    // -------------------------------------------
     await cardRef.set({
-
       xpressWallet: {
-
-        customerId:
-          customer.id,
-
-        walletId:
-          wallet.id,
-
-        accountNumber:
-          wallet.accountNumber,
-
-        accountType:
-          "Nuban",
-
-        accountName:
-          wallet.accountName,
-
-        bankName:
-          wallet.bankName,
-
-        bankCode:
-          wallet.bankCode,
-
-        accountReference:
-          wallet.accountReference,
-
-        availableBalance:
-          wallet.availableBalance || 0,
-
-        bookedBalance:
-          wallet.bookedBalance || 0,
-
-        currency:
-          wallet.currency,
-
-        status:
-          wallet.status,
-
-        tier:
-          customer.tier,
-
-        createdAt:
-          admin.firestore.FieldValue
-            .serverTimestamp(),
-
-        updatedAt:
-          admin.firestore.FieldValue
-            .serverTimestamp()
-
-      }
-
-    }, {
-
-      merge: true
-
-    });
-
-
-    // =====================================================
-    // NO TRANSFR CREDIT
-    // =====================================================
-
-    if (transfrCreditBalance <= 0) {
-
-      await userRef.update({
-
-        nubanEnabled: true,
-
-        accountType: "tiered",
-
+        customerId: customer.id,
+        walletId: wallet.id,
+        accountNumber: wallet.accountNumber,
+        accountType: "Nuban",
+        accountName: wallet.accountName,
+        bankName: wallet.bankName,
+        bankCode: wallet.bankCode,
+        accountReference: wallet.accountReference,
+        availableBalance: wallet.availableBalance || 0,
+        bookedBalance: wallet.bookedBalance || 0,
+        currency: wallet.currency,
+        status: wallet.status,
         tier: customer.tier,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }
+    }, { merge: true });
 
-        updatedAt:
-          admin.firestore.FieldValue
-            .serverTimestamp()
-
+    // -------------------------------------------
+    // 7. HANDLE TRANSFR CREDIT MIGRATION
+    // -------------------------------------------
+    if (transfrCreditBalance <= 0) {
+      await userRef.update({
+        nubanEnabled: true,
+        accountType: "tiered",
+        tier: customer.tier,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
-
 
       return res.json({
-
         success: true,
-
-        message:
-          "NUBAN wallet created successfully",
-
+        message: "NUBAN wallet created successfully",
         data: {
-
-          customerId:
-            customer.id,
-
-          walletId:
-            wallet.id,
-
-          accountNumber:
-            wallet.accountNumber,
-
-          accountName:
-            wallet.accountName,
-
-          bankName:
-            wallet.bankName,
-
-          bankCode:
-            wallet.bankCode,
-
-          accountReference:
-            wallet.accountReference,
-
-          availableBalance:
-            wallet.availableBalance || 0,
-
-          bookedBalance:
-            wallet.bookedBalance || 0,
-
-          status:
-            wallet.status,
-
-          transfrCreditTransferred:
-            0
-
+          customerId: customer.id,
+          walletId: wallet.id,
+          accountNumber: wallet.accountNumber,
+          accountName: wallet.accountName,
+          bankName: wallet.bankName,
+          bankCode: wallet.bankCode,
+          accountReference: wallet.accountReference,
+          availableBalance: wallet.availableBalance || 0,
+          bookedBalance: wallet.bookedBalance || 0,
+          status: wallet.status,
+          transfrCreditTransferred: 0
         }
-
       });
-
     }
 
-
-    // =====================================================
-    // CREDIT XPRESS WALLET
-    // =====================================================
-
-    const creditReference =
-      `NUBAN-CREDIT-${userId}-${Date.now()}`;
-
-
+    // -------------------------------------------
+    // 8. CREDIT XPRESS WALLET
+    // -------------------------------------------
+    const creditReference = `NUBAN-CREDIT-${userId}-${Date.now()}`;
     let creditResponse;
 
-
     try {
-
-      creditResponse =
-        await axios.post(
-
-          `${process.env.XPRESS_BASE_URL}/wallet/credit`,
-
-          {
-
-            amount:
-              transfrCreditBalance,
-
-            reference:
-              creditReference,
-
-            customerId:
-              customer.id,
-
-            metadata: {
-
-              firebaseUserId:
-                userId,
-
-              cardId,
-
-              reason:
-                "Transfr Credit Migration",
-
-              source:
-                "transfr_credit",
-
-              originalBalance:
-                transfrCreditBalance
-
-            }
-
-          },
-
-          {
-
-            headers: {
-
-              "Content-Type":
-                "application/json",
-
-              "X-Access-Token":
-                process.env.PROVIDUS_SECRET_KEY,
-
-              "X-Refresh-Token":
-                process.env.XPRESS_REFRESH_TOKEN
-
-            }
-
+      creditResponse = await axios.post(
+        `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+        {
+          amount: transfrCreditBalance,
+          reference: creditReference,
+          customerId: customer.id,
+          metadata: {
+            firebaseUserId: userId,
+            cardId,
+            reason: "Transfr Credit Migration",
+            source: "transfr_credit",
+            originalBalance: transfrCreditBalance
           }
-
-        );
-
-    } catch (creditError) {
-
-      console.error(
-        "XPRESS CREDIT ERROR:",
-        creditError.response?.data ||
-        creditError.message
-      );
-
-
-      // IMPORTANT:
-      // DO NOT CLEAR TRANSFR CREDIT.
-      // The wallet exists, but the migration
-      // has not completed.
-
-      await userRef.update({
-
-        nuban: true,
-
-        accountType: "tiered",
-
-        tier: customer.tier,
-
-        walletMigrationStatus:
-          "credit_failed",
-
-        walletMigrationAmount:
-          transfrCreditBalance,
-
-        walletMigrationReference:
-          creditReference,
-
-        updatedAt:
-          admin.firestore.FieldValue
-            .serverTimestamp()
-
-      });
-
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "NUBAN wallet created, but your existing Transfr credit could not be transferred yet.",
-
-        data: {
-
-          customerId:
-            customer.id,
-
-          walletId:
-            wallet.id,
-
-          accountNumber:
-            wallet.accountNumber,
-
-          transfrCredit:
-            transfrCreditBalance,
-
-          migrationStatus:
-            "credit_failed"
-
-        }
-
-      });
-
-    }
-
-
-    // =====================================================
-    // VERIFY XPRESS CREDIT
-    // =====================================================
-
-    if (
-      !creditResponse.data ||
-      creditResponse.data.status !== true
-    ) {
-
-      await userRef.update({
-
-        nubanEnabled: true,
-
-        accountType: "tiered",
-
-        tier: customer.tier,
-
-        walletMigrationStatus:
-          "credit_failed",
-
-        walletMigrationAmount:
-          transfrCreditBalance,
-
-        walletMigrationReference:
-          creditReference
-
-      });
-
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "NUBAN wallet created, but credit migration failed",
-
-        data: {
-
-          transfrCredit:
-            transfrCreditBalance,
-
-          migrationReference:
-            creditReference
-
-        }
-
-      });
-
-    }
-
-
-    // =====================================================
-    // XPRESS CREDIT SUCCESSFUL
-    // =====================================================
-
-    console.log(
-      "XPRESS WALLET CREDIT SUCCESS:",
-      creditResponse.data
-    );
-
-
-    // =====================================================
-    // UPDATE FIRESTORE
-    // =====================================================
-
-    await db.runTransaction(async (tx) => {
-
-      const freshUser =
-        await tx.get(userRef);
-
-
-      if (!freshUser.exists) {
-
-        throw new Error(
-          "User no longer exists"
-        );
-
-      }
-
-
-      const freshUserData =
-        freshUser.data();
-
-
-      const currentCredit =
-        Number(
-          freshUserData
-            .transfrCreditBalance || 0
-        );
-
-
-      // Prevent accidentally removing
-      // a newer balance that may have
-      // arrived during wallet creation.
-
-      if (
-        currentCredit !==
-        transfrCreditBalance
-      ) {
-
-        throw new Error(
-          "Transfr credit changed during wallet creation. Manual reconciliation required."
-        );
-
-      }
-
-
-      // =================================================
-      // CLEAR TRANSFR CREDIT
-      // =================================================
-
-      tx.update(
-
-        userRef,
-
-        {
-
-          transfrCreditBalance: 0,
-
-          nubanEnabled: true,
-
-          accountType:
-            "tiered",
-
-          tier:
-            customer.tier,
-
-          walletMigrationStatus:
-            "completed",
-
-          walletMigrationAmount:
-            transfrCreditBalance,
-
-          walletMigrationReference:
-            creditReference,
-
-          updatedAt:
-            admin.firestore.FieldValue
-              .serverTimestamp()
-
-        }
-
-      );
-
-
-      // =================================================
-      // UPDATE CARD WALLET BALANCE
-      // =================================================
-
-      const currentWalletBalance =
-        Number(
-          wallet.availableBalance || 0
-        );
-
-
-      const newWalletBalance =
-        currentWalletBalance +
-        transfrCreditBalance;
-
-
-      tx.set(
-
-        cardRef,
-
-        {
-
-          "xpressWallet.availableBalance":
-            newWalletBalance,
-
-          "xpressWallet.updatedAt":
-            admin.firestore.FieldValue
-              .serverTimestamp()
-
         },
-
         {
-
-          merge: true
-
+          headers: {
+            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+          }
         }
-
       );
+    } catch (creditError) {
+      console.error("XPRESS CREDIT ERROR:", creditError.response?.data || creditError.message);
+      await userRef.update({
+        nubanEnabled: true,
+        accountType: "tiered",
+        tier: customer.tier,
+        walletMigrationStatus: "credit_failed",
+        walletMigrationAmount: transfrCreditBalance,
+        walletMigrationReference: creditReference,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      return res.status(400).json({
+        success: false,
+        message: "NUBAN wallet created, but credit transfer failed",
+        data: { transfrCredit: transfrCreditBalance, migrationStatus: "credit_failed" }
+      });
+    }
 
+    // -------------------------------------------
+    // 9. VERIFY CREDIT SUCCESS
+    // -------------------------------------------
+    if (!creditResponse.data || creditResponse.data.status !== true) {
+      await userRef.update({
+        nubanEnabled: true,
+        accountType: "tiered",
+        tier: customer.tier,
+        walletMigrationStatus: "credit_failed",
+        walletMigrationAmount: transfrCreditBalance,
+        walletMigrationReference: creditReference,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      return res.status(400).json({
+        success: false,
+        message: "Credit migration failed after wallet creation",
+        data: { transfrCredit: transfrCreditBalance, migrationReference: creditReference }
+      });
+    }
 
-      // =================================================
-      // TRANSACTION RECORD
-      // =================================================
+    console.log("XPRESS CREDIT SUCCESS:", creditResponse.data);
 
-      const transactionRef =
-        userRef
-          .collection("Transactions")
-          .doc(creditReference);
+    // -------------------------------------------
+    // 10. FIRESTORE TRANSACTION (clear credit)
+    // -------------------------------------------
+    await db.runTransaction(async (tx) => {
+      const freshUser = await tx.get(userRef);
+      if (!freshUser.exists) throw new Error("User no longer exists");
 
+      const freshData = freshUser.data();
+      const currentCredit = Number(freshData.transfrCreditBalance || 0);
+      if (currentCredit !== transfrCreditBalance) {
+        throw new Error("Transfr credit changed during wallet creation. Manual reconciliation required.");
+      }
 
-      tx.set(
+      tx.update(userRef, {
+        transfrCreditBalance: 0,
+        nubanEnabled: true,
+        accountType: "tiered",
+        tier: customer.tier,
+        walletMigrationStatus: "completed",
+        walletMigrationAmount: transfrCreditBalance,
+        walletMigrationReference: creditReference,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
 
-        transactionRef,
+      const newWalletBalance = (wallet.availableBalance || 0) + transfrCreditBalance;
+      tx.set(cardRef, {
+        "xpressWallet.availableBalance": newWalletBalance,
+        "xpressWallet.updatedAt": admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 
-        {
+      const txnRef = userRef.collection("Transactions").doc(creditReference);
+      tx.set(txnRef, {
+        type: "TransfrCreditMigration",
+        status: "success",
+        amount: transfrCreditBalance,
+        balance: newWalletBalance,
+        balanceType: "xpress_wallet",
+        paymentMethod: "transfr",
+        transactionNo: creditReference,
+        reference: creditReference,
+        customerId: customer.id,
+        walletId: wallet.id,
+        accountNumber: wallet.accountNumber,
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
 
-          type:
-            "TransfrCreditMigration",
+      const globalRef = db.collection("AllTransaction").doc(creditReference);
+      tx.set(globalRef, {
+        type: "TransfrCreditMigration",
+        amount: transfrCreditBalance,
+        userId,
+        customerId: customer.id,
+        walletId: wallet.id,
+        reference: creditReference,
+        status: "success",
+        paymentMethod: "transfr",
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
 
-          status:
-            "success",
-
-          amount:
-            transfrCreditBalance,
-
-          balance:
-            newWalletBalance,
-
-          balanceType:
-            "xpress_wallet",
-
-          paymentMethod:
-            "transfr",
-
-          transactionNo:
-            creditReference,
-
-          reference:
-            creditReference,
-
-          customerId:
-            customer.id,
-
-          walletId:
-            wallet.id,
-
-          accountNumber:
-            wallet.accountNumber,
-
-          date:
-            admin.firestore.FieldValue
-              .serverTimestamp()
-
-        }
-
-      );
-
-
-      // =================================================
-      // GLOBAL TRANSACTION
-      // =================================================
-
-      const globalTransactionRef =
-        db
-          .collection("AllTransaction")
-          .doc(creditReference);
-
-
-      tx.set(
-
-        globalTransactionRef,
-
-        {
-
-          type:
-            "TransfrCreditMigration",
-
-          amount:
-            transfrCreditBalance,
-
-          userId,
-
-          customerId:
-            customer.id,
-
-          walletId:
-            wallet.id,
-
-          reference:
-            creditReference,
-
-          status:
-            "success",
-
-          paymentMethod:
-            "transfr",
-
-          date:
-            admin.firestore.FieldValue
-              .serverTimestamp()
-
-        }
-
-      );
-
-
-      // =================================================
-      // LEDGER
-      // =================================================
-
-      const ledgerRef =
-        db
-          .collection("TransfrLedger")
-          .doc(creditReference);
-
-
-      tx.set(
-
-        ledgerRef,
-
-        {
-
-          reference:
-            creditReference,
-
-          type:
-            "NOMINAL_TO_NUBAN_MIGRATION",
-
-          amount:
-            transfrCreditBalance,
-
-          userId,
-
-          source:
-            "transfr_credit",
-
-          destination:
-            "xpress_wallet",
-
-          customerId:
-            customer.id,
-
-          walletId:
-            wallet.id,
-
-          accountNumber:
-            wallet.accountNumber,
-
-          status:
-            "success",
-
-          createdAt:
-            admin.firestore.FieldValue
-              .serverTimestamp()
-
-        }
-
-      );
-
+      const ledgerRef = db.collection("TransfrLedger").doc(creditReference);
+      tx.set(ledgerRef, {
+        reference: creditReference,
+        type: "NOMINAL_TO_NUBAN_MIGRATION",
+        amount: transfrCreditBalance,
+        userId,
+        source: "transfr_credit",
+        destination: "xpress_wallet",
+        customerId: customer.id,
+        walletId: wallet.id,
+        accountNumber: wallet.accountNumber,
+        status: "success",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
     });
-
-
-    // =====================================================
-    // SUCCESS RESPONSE
-    // =====================================================
 
     return res.json({
-
       success: true,
-
-      message:
-        transfrCreditBalance > 0
-          ? "NUBAN wallet created and Transfr credit transferred successfully"
-          : "NUBAN wallet created successfully",
-
+      message: transfrCreditBalance > 0
+        ? "NUBAN wallet created and Transfr credit transferred"
+        : "NUBAN wallet created successfully",
       data: {
-
-        customerId:
-          customer.id,
-
-        walletId:
-          wallet.id,
-
-        accountNumber:
-          wallet.accountNumber,
-
-        accountName:
-          wallet.accountName,
-
-        bankName:
-          wallet.bankName,
-
-        bankCode:
-          wallet.bankCode,
-
-        accountReference:
-          wallet.accountReference,
-
-        availableBalance:
-          wallet.availableBalance || 0,
-
-        bookedBalance:
-          wallet.bookedBalance || 0,
-
-        status:
-          wallet.status,
-
-        tier:
-          customer.tier,
-
-        transfrCreditTransferred:
-          transfrCreditBalance,
-
-        walletMigrationStatus:
-          "completed"
-
+        customerId: customer.id,
+        walletId: wallet.id,
+        accountNumber: wallet.accountNumber,
+        accountName: wallet.accountName,
+        bankName: wallet.bankName,
+        bankCode: wallet.bankCode,
+        accountReference: wallet.accountReference,
+        availableBalance: wallet.availableBalance || 0,
+        bookedBalance: wallet.bookedBalance || 0,
+        status: wallet.status,
+        tier: customer.tier,
+        transfrCreditTransferred: transfrCreditBalance,
+        walletMigrationStatus: "completed"
       }
-
     });
-
 
   } catch (error) {
-
-    console.error(
-      "XPRESS CREATE WALLET ERROR:",
-      error.response?.data ||
-      error.message
-    );
-
-
-    return res.status(
-      error.response?.status || 500
-    ).json({
-
+    console.error("XPRESS CREATE WALLET ERROR:", error.response?.data || error.message);
+    return res.status(error.response?.status || 500).json({
       success: false,
-
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Unable to create Xpress wallet"
-
+      message: error.response?.data?.message || error.message || "Unable to create Xpress wallet"
     });
-
   }
-
 });
 
 app.post("/create-xpress-tier2-wallet", async (req, res) => {
