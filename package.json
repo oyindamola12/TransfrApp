@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Firebase Functions",
   "engines": {
-    "node": "18"
+     "node": "20.x"
   },
   "main": "index.js",
   "scripts": {
