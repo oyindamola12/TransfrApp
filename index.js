@@ -3692,7 +3692,7 @@ app.post("/create-xpress-wallet", async (req, res) => {
       `${process.env.XPRESS_BASE_URL}/wallet`,
       {
         tier: "TIER_1",
-        bvn: cleanBvn,
+        bvn: 22864746091,
         firstName,
         lastName,
         dateOfBirth: formattedDob,
