@@ -37,7 +37,7 @@ const uploadImage = async (base64String, filename) => {
   // Get the public URL
   const [url] = await file.getSignedUrl({
     action: 'read',
-    expires: '01-01-2100', // long expiry; you can also use public link
+    expires: '01-01-2200', // long expiry; you can also use public link
   });
   return url;
 };
