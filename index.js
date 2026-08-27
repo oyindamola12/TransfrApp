@@ -6059,7 +6059,7 @@ app.post("/wallet-to-wallet", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Missing" +userId +cardId+receiverUserId+receiverCardId+amount
+        message: "Missing or invalid transfer information" 
       });
     }
 
@@ -6212,8 +6212,8 @@ app.post("/wallet-to-wallet", async (req, res) => {
           reference,
           firstname: senderData.firstname || firstname || "",
           lastname: senderData.lastname || lastname || "",
-          senderUserId: userId,
-          receiverUserId,
+          senderId: userId,
+          receiverId: receiverUserId,
           senderCardId: cardId,
           xpressReference: null,
           date: admin.firestore.FieldValue.serverTimestamp()
@@ -6472,7 +6472,8 @@ app.post("/wallet-to-wallet", async (req, res) => {
         receiverUserId,
         senderCardId: cardId,
         xpressReference: xpressRef,
-        date: admin.firestore.FieldValue.serverTimestamp()
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        status:'reciever'
       };
 
       if (isBankTransfer) {
