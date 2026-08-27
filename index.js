@@ -3692,12 +3692,12 @@ app.post("/create-xpress-wallet", async (req, res) => {
       `${process.env.XPRESS_BASE_URL}/wallet`,
       {
         tier: "TIER_1",
-        bvn: 22864746093,
+        bvn: cleanBvn,
         firstName,
         lastName,
         dateOfBirth: formattedDob,
-        phoneNumber: 2349153525724,          // use cleaned phone
-        email:'mshittu014@gmail.com',                            // use provided email
+        phoneNumber: cleanPhone,          // use cleaned phone
+        email,                            // use provided email
         address,
         metadata: { firebaseUserId: userId }
       },
@@ -5337,6 +5337,60 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
   }
 });
 
+
+// server.js
+
+/**
+ * POST /xpress-customer-data
+ * Get customer and wallet details from Xpress using customerId from request body
+ */
+app.post('/xpress-customer-data', async (req, res) => {
+  try {
+    const { customerId } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing customerId' 
+      });
+    }
+
+    // Call Xpress GET /customer/{customerId}
+    const response = await axios.get(
+      `${process.env.XPRESS_BASE_URL}/customer/${customerId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+        },
+      }
+    );
+
+    const customer = response.data?.customer || null;
+    const wallet = response.data?.wallet || null;
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found in Xpress',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        customer,
+        wallet,
+      },
+    });
+
+  } catch (error) {
+    console.error('Xpress API error:', error.response?.data || error.message);
+    return res.status(error.response?.status || 500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || 'Failed to fetch Xpress data',
+    });
+  }
+});
 // app.post("/create-xpress-tier3-wallet", async (req, res) => {
 
 //   try {
