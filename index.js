@@ -6059,7 +6059,7 @@ app.post("/wallet-to-wallet", async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Missing or invalid transfer information"
+        message: "Missing" +userId +cardId+receiverUserId+receiverCardId+amount
       });
     }
 
