@@ -5346,6 +5346,64 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
  */
 // server.js
 
+// app.post('/xpress-customer-data', async (req, res) => {
+//   try {
+//     const { customerId } = req.body;
+
+//     if (!customerId) {
+//       return res.status(400).json({ success: false, message: 'Missing customerId' });
+//     }
+
+//     // Call Xpress GET /customer/{customerId}
+//     const response = await axios.get(
+//       `${process.env.XPRESS_BASE_URL}/customer/${customerId}`,
+//       {
+//         headers: {
+//           'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//         },
+//       }
+//     );
+
+//     // Extract customer and wallet data
+//     const customerData = response.data?.customer || {};
+//     const walletData = response.data?.wallet || {};
+
+//     // Combine relevant information
+//     const result = {
+//       success: true,
+//       data: {
+//         customerId: customerData.id,
+//         tier: customerData.tier,
+//         status: customerData.status,
+//         email: customerData.email,
+//         firstName: customerData.firstName,
+//         lastName: customerData.lastName,
+//         phoneNumber: customerData.phoneNumber,
+//         walletId: walletData.id,
+//         accountNumber: walletData.accountNumber,
+//         accountName: walletData.accountName,
+//         bankName: walletData.bankName,
+//         bankCode: walletData.bankCode,
+//         availableBalance: walletData.availableBalance || 0,
+//         bookedBalance: walletData.bookedBalance || 0,
+//         currency: walletData.currency || 'NGN',
+//         status: walletData.status || 'ACTIVE',
+//       }
+//     };
+
+//     return res.status(200).json(result);
+
+//   } catch (error) {
+//     console.error('Xpress customer data error:', error.response?.data || error.message);
+//     return res.status(error.response?.status || 500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || 'Failed to fetch Xpress data',
+//     });
+//   }
+// });
+
+// server.js
+
 app.post('/xpress-customer-data', async (req, res) => {
   try {
     const { customerId } = req.body;
@@ -5354,50 +5412,52 @@ app.post('/xpress-customer-data', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing customerId' });
     }
 
-    // Call Xpress GET /customer/{customerId}
+    // Call Xpress GET /wallet/customer?customerId=...
     const response = await axios.get(
-      `${process.env.XPRESS_BASE_URL}/customer/${customerId}`,
+      `${process.env.XPRESS_BASE_URL}/wallet/customer`,
       {
+        params: { customerId },
         headers: {
           'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+          'Content-Type': 'application/json',
         },
       }
     );
 
-    // Extract customer and wallet data
-    const customerData = response.data?.customer || {};
-    const walletData = response.data?.wallet || {};
+    const wallet = response.data?.wallet;
 
-    // Combine relevant information
-    const result = {
+    if (!wallet) {
+      return res.status(404).json({ success: false, message: 'Wallet not found' });
+    }
+
+    return res.status(200).json({
       success: true,
       data: {
-        customerId: customerData.id,
-        tier: customerData.tier,
-        status: customerData.status,
-        email: customerData.email,
-        firstName: customerData.firstName,
-        lastName: customerData.lastName,
-        phoneNumber: customerData.phoneNumber,
-        walletId: walletData.id,
-        accountNumber: walletData.accountNumber,
-        accountName: walletData.accountName,
-        bankName: walletData.bankName,
-        bankCode: walletData.bankCode,
-        availableBalance: walletData.availableBalance || 0,
-        bookedBalance: walletData.bookedBalance || 0,
-        currency: walletData.currency || 'NGN',
-        status: walletData.status || 'ACTIVE',
-      }
-    };
-
-    return res.status(200).json(result);
-
+        wallet: {
+          id: wallet.id,
+          accountNumber: wallet.accountNumber,
+          accountName: wallet.accountName,
+          bankName: wallet.bankName,
+          bankCode: wallet.bankCode,
+          accountReference: wallet.accountReference,
+          availableBalance: wallet.availableBalance || 0,
+          bookedBalance: wallet.bookedBalance || 0,
+          currency: wallet.currency || 'NGN',
+          status: wallet.status,
+          customerId: wallet.customerId,
+          firstName: wallet.firstName,
+          lastName: wallet.lastName,
+          email: wallet.email,
+          createdAt: wallet.createdAt,
+          updatedAt: wallet.updatedAt,
+        },
+      },
+    });
   } catch (error) {
-    console.error('Xpress customer data error:', error.response?.data || error.message);
+    console.error('Xpress wallet data error:', error.response?.data || error.message);
     return res.status(error.response?.status || 500).json({
       success: false,
-      message: error.response?.data?.message || error.message || 'Failed to fetch Xpress data',
+      message: error.response?.data?.message || error.message || 'Failed to fetch wallet data',
     });
   }
 });
