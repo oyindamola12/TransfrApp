@@ -3696,7 +3696,7 @@ app.post("/create-xpress-wallet", async (req, res) => {
         firstName,
         lastName,
         dateOfBirth: formattedDob,
-        phoneNumber: cleanPhone,          // use cleaned phone
+        phoneNumber:  2348153535725,          // use cleaned phone
         email,                            // use provided email
         address,
         metadata: { firebaseUserId: userId }
@@ -3948,9 +3948,1071 @@ app.post("/create-xpress-wallet", async (req, res) => {
   }
 });
 
+// app.post("/create-xpress-tier2-wallet", async (req, res) => {
+//   try {
+
+//     const {
+//       userId,
+//       cardId,
+//       bvn,
+//       firstName,
+//       lastName,
+//       dateOfBirth,
+//       phoneNumber,
+//       email,
+//       address,
+//       passportPhoto
+//     } = req.body;
+
+
+//     // ==========================================
+//     // VALIDATE REQUIRED FIELDS
+//     // ==========================================
+
+//     if (
+//       !userId ||
+//       !cardId ||
+//       !bvn ||
+//       !firstName ||
+//       !lastName ||
+//       !dateOfBirth ||
+//       !phoneNumber ||
+//       !email ||
+//       !address ||
+//       !passportPhoto
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "All Tier 2 fields are required"
+//       });
+//     }
+
+
+//     // ==========================================
+//     // FIRESTORE REFERENCES
+//     // ==========================================
+
+//     const userRef =
+//       db.collection("users").doc(userId);
+
+//     const cardRef =
+//       userRef
+//         .collection("Cards")
+//         .doc(cardId);
+
+
+//     // ==========================================
+//     // GET USER
+//     // ==========================================
+
+//     const userDoc =
+//       await userRef.get();
+
+//       const cardDoc =
+//       await cardRef.get();
+
+//     if (!userDoc.exists) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found"
+//       });
+//     }
+
+//     const userData =
+//       userDoc.data();
+  
+
+//        const cardData =
+//       cardDoc.data();
+
+
+//     // ==========================================
+//     // PREVENT DUPLICATE / DOWNGRADE
+//     // ==========================================
+
+//     if (
+//       cardData.xpressWallet?.customerId &&
+//       cardData.xpressWallet?.tier === "TIER_1"
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "User already has a TIER 1 account, please upgrade to Transfr Gold for better experience.",
+//         data: userData.xpressWallet
+//       });
+//     }
+
+
+//     if (
+//       userData.xpressWallet?.customerId &&
+//       userData.xpressWallet?.tier === "TIER_2"
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "User already has a TIER 2 account, please upgrade to Transfr Platinum for better experience.",
+//         data: userData.xpressWallet
+//       });
+//     }
+
+
+//     if (
+//       userData.xpressWallet?.customerId &&
+//       userData.xpressWallet?.tier === "TIER_3"
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "User already has a TIER 3 account.",
+//         data: userData.xpressWallet
+//       });
+//     }
+
+
+//     // ==========================================
+//     // GET EXISTING TRANSFR CREDIT
+//     // ==========================================
+
+//     const transfrCreditBalance =
+//       Number(
+//         userData.transfrCreditBalance || 0
+//       );
+
+//     console.log(
+//       "Existing Transfr Credit:",
+//       transfrCreditBalance
+//     );
+
+
+//     // ==========================================
+//     // UPLOAD PASSPORT PHOTO
+//     // ==========================================
+
+//     let passportUrl = null;
+
+//     try {
+
+//       const base64Data =
+//         passportPhoto.replace(
+//           /^data:image\/\w+;base64,/,
+//           ""
+//         );
+
+//       const fileName =
+//         `tier2-passports/${userId}_${Date.now()}.jpg`;
+
+//       const file =
+//         bucket.file(fileName);
+
+//       const imageBuffer =
+//         Buffer.from(
+//           base64Data,
+//           "base64"
+//         );
+
+//       await file.save(
+//         imageBuffer,
+//         {
+//           metadata: {
+//             contentType: "image/jpeg"
+//           }
+//         }
+//       );
+
+
+//       const [signedUrl] =
+//         await file.getSignedUrl({
+//           action: "read",
+//           expires: "03-01-2080"
+//         });
+
+//       passportUrl =
+//         signedUrl;
+
+//     } catch (photoError) {
+
+//       console.error(
+//         "PASSPORT UPLOAD ERROR:",
+//         photoError.message
+//       );
+
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Passport photograph upload failed"
+//       });
+//     }
+
+
+//     // ==========================================
+//     // CREATE XPRESS TIER 2 WALLET
+//     // ==========================================
+
+//     const xpressResponse =
+//       await axios.post(
+
+//         `${process.env.XPRESS_BASE_URL}/wallet`,
+
+//         {
+//           tier: "TIER_2",
+//           bvn,
+//           firstName,
+//           lastName,
+//           dateOfBirth,
+//           phoneNumber,
+//           email,
+//           address,
+
+//           metadata: {
+//             firebaseUserId: userId,
+//             tier: "TIER_2",
+//             passportPhoto: passportUrl
+//           }
+//         },
+
+//         {
+//           // headers: {
+//           //   "Content-Type":
+//           //     "application/json",
+
+//           //   "X-Access-Token":
+//           //     process.env.XPRESS_ACCESS_TOKEN,
+
+//           //   "X-Refresh-Token":
+//           //     process.env.XPRESS_REFRESH_TOKEN
+//           // }
+
+
+//                 headers: {
+//         'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//         'Content-Type': 'application/json',
+//       },
+
+//         }
+
+//       );
+
+
+//     const xpressData = xpressResponse.data;
+
+
+//     // ==========================================
+//     // CHECK XPRESS RESPONSE
+//     // ==========================================
+
+//     if (
+//       !xpressData ||
+//       !xpressData.customer ||
+//       !xpressData.wallet
+//     ) {
+
+//       return res.status(500).json({
+//         success: false,
+//         message:
+//           "Invalid response from Xpress"
+//       });
+
+//     }
+
+
+//     const customer =
+//       xpressData.customer;
+
+//     const wallet =
+//       xpressData.wallet;
+
+
+//     // ==========================================
+//     // VERIFY TIER 2
+//     // ==========================================
+
+//     if (
+//       customer.tier !== "TIER_2"
+//     ) {
+
+//       console.error(
+//         "XPRESS RETURNED UNEXPECTED TIER:",
+//         customer.tier
+//       );
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "Wallet was not created as Tier 2",
+
+//         tier:
+//           customer.tier
+
+//       });
+
+//     }
+
+
+//     // ==========================================
+//     // SAVE XPRESS WALLET
+//     // ==========================================
+
+//     await cardRef.set({
+
+//       xpressWallet: {
+
+//         customerId:
+//           customer.id,
+
+//         walletId:
+//           wallet.id,
+
+//         accountNumber:
+//           wallet.accountNumber,
+
+//         accountType:
+//           "Nuban",
+
+//         accountName:
+//           wallet.accountName,
+
+//         bankName:
+//           wallet.bankName,
+
+//         bankCode:
+//           wallet.bankCode,
+
+//         accountReference:
+//           wallet.accountReference,
+
+//         availableBalance:
+//           wallet.availableBalance || 0,
+
+//         bookedBalance:
+//           wallet.bookedBalance || 0,
+
+//         currency:
+//           wallet.currency,
+
+//         status:
+//           wallet.status,
+
+//         tier:
+//           customer.tier,
+
+//         passportPhoto:
+//           passportUrl,
+
+//         createdAt:
+//           admin.firestore.FieldValue
+//             .serverTimestamp(),
+
+//         updatedAt:
+//           admin.firestore.FieldValue
+//             .serverTimestamp()
+
+//       }
+
+//     }, {
+//       merge: true
+//     });
+
+
+//     // ==========================================
+//     // UPDATE USER BASIC INFORMATION
+//     // ==========================================
+
+//     await userRef.update({
+
+//       tier:
+//         customer.tier,
+
+//       nubanEnabled:
+//         true,
+
+//       accountType:
+//         "tiered",
+
+//       notification:
+//         true,
+
+//       inappnotification:
+//         true,
+
+//       address,
+
+//       passportPhoto:
+//         passportUrl
+
+//     });
+
+
+//     // ==========================================
+//     // NO TRANSFR CREDIT TO MIGRATE
+//     // ==========================================
+
+//     if (
+//       transfrCreditBalance <= 0
+//     ) {
+
+//       return res.json({
+
+//         success: true,
+
+//         message:
+//           "Tier 2 wallet created successfully",
+
+//         data: {
+
+//           cardId,
+
+//           tier:
+//             "TIER_2",
+
+//           customerId:
+//             customer.id,
+
+//           walletId:
+//             wallet.id,
+
+//           accountNumber:
+//             wallet.accountNumber,
+
+//           accountName:
+//             wallet.accountName,
+
+//           bankName:
+//             wallet.bankName,
+
+//           bankCode:
+//             wallet.bankCode,
+
+//           accountReference:
+//             wallet.accountReference,
+
+//           balance:
+//             Number(
+//               wallet.availableBalance || 0
+//             ),
+
+//           status:
+//             wallet.status,
+
+//           transfrCreditTransferred:
+//             0
+
+//         }
+
+//       });
+
+//     }
+
+
+//     // ==========================================
+//     // CREDIT NEW XPRESS WALLET
+//     // WITH TRANSFR CREDIT
+//     // ==========================================
+
+//     const creditReference =
+//       `TIER2-MIGRATION-${userId}-${Date.now()}`;
+
+
+//     let creditResponse;
+
+//     try {
+
+//       creditResponse =
+//         await axios.post(
+
+//           `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+
+//           {
+
+//             amount:
+//               transfrCreditBalance,
+
+//             reference:
+//               creditReference,
+
+//             customerId:
+//               customer.id,
+
+//             metadata: {
+
+//               firebaseUserId:
+//                 userId,
+
+//               cardId,
+
+//               reason:
+//                 "Tier 2 Transfr Credit Migration",
+
+//               source:
+//                 "transfr_credit",
+
+//               tier:
+//                 "TIER_2"
+
+//             }
+
+//           },
+
+//           {
+
+//             // headers: {
+
+//             //   "Content-Type":
+//             //     "application/json",
+
+//             //   "X-Access-Token":
+//             //     process.env.XPRESS_ACCESS_TOKEN,
+
+//             //   "X-Refresh-Token":
+//             //     process.env.XPRESS_REFRESH_TOKEN
+
+//             // }
+
+//                   headers: {
+//         'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//         'Content-Type': 'application/json',
+//       },
+
+
+//           }
+
+//         );
+
+//     } catch (creditError) {
+
+//       console.error(
+//         "XPRESS TIER 2 CREDIT ERROR:",
+//         creditError.response?.data ||
+//         creditError.message
+//       );
+
+
+//       // ========================================
+//       // DO NOT CLEAR TRANSFR CREDIT
+//       // ========================================
+
+//       await userRef.update({
+
+//         walletMigrationStatus:
+//           "credit_failed",
+
+//         walletMigrationAmount:
+//           transfrCreditBalance,
+
+//         walletMigrationReference:
+//           creditReference
+
+//       });
+
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "Tier 2 wallet was created, but your existing Transfr credit could not be transferred.",
+
+//         data: {
+
+//           tier:
+//             "TIER_2",
+
+//           accountNumber:
+//             wallet.accountNumber,
+
+//           transfrCredit:
+//             transfrCreditBalance,
+
+//           migrationStatus:
+//             "credit_failed",
+
+//           migrationReference:
+//             creditReference
+
+//         }
+
+//       });
+
+//     }
+
+
+//     // ==========================================
+//     // VERIFY CREDIT RESPONSE
+//     // ==========================================
+
+//     if (
+//       !creditResponse.data ||
+//       creditResponse.data.status !== true
+//     ) {
+
+//       await userRef.update({
+
+//         walletMigrationStatus:
+//           "credit_failed",
+
+//         walletMigrationAmount:
+//           transfrCreditBalance,
+
+//         walletMigrationReference:
+//           creditReference
+
+//       });
+
+
+//       return res.status(400).json({
+
+//         success: false,
+
+//         message:
+//           "Tier 2 wallet created, but credit migration failed",
+
+//         data: {
+
+//           transfrCredit:
+//             transfrCreditBalance,
+
+//           migrationReference:
+//             creditReference
+
+//         }
+
+//       });
+
+//     }
+
+
+//     // ==========================================
+//     // XPRESS CREDIT SUCCESS
+//     // ==========================================
+
+//     console.log(
+//       "TIER 2 XPRESS CREDIT SUCCESS:",
+//       creditResponse.data
+//     );
+
+
+//     // ==========================================
+//     // UPDATE FIRESTORE ATOMICALLY
+//     // ==========================================
+
+//     await db.runTransaction(
+//       async (tx) => {
+
+//         const freshUser =
+//           await tx.get(userRef);
+
+//         const freshCard =
+//           await tx.get(cardRef);
+
+
+//         if (!freshUser.exists) {
+//           throw new Error(
+//             "User no longer exists"
+//           );
+//         }
+
+
+//         if (!freshCard.exists) {
+//           throw new Error(
+//             "Wallet card no longer exists"
+//           );
+//         }
+
+
+//         const freshUserData =
+//           freshUser.data();
+
+//         const freshCardData =
+//           freshCard.data();
+
+
+//         const currentCredit =
+//           Number(
+//             freshUserData
+//               .transfrCreditBalance || 0
+//           );
+
+
+//         // ======================================
+//         // IMPORTANT
+//         // ======================================
+
+//         // Make sure another transaction did
+//         // not change the credit while we were
+//         // creating the wallet.
+
+//         if (
+//           currentCredit !==
+//           transfrCreditBalance
+//         ) {
+
+//           throw new Error(
+//             "Transfr credit changed during wallet creation. Manual reconciliation required."
+//           );
+
+//         }
+
+
+//         const currentWalletBalance =
+//           Number(
+//             freshCardData
+//               .xpressWallet
+//               ?.availableBalance || 0
+//           );
+
+
+//         const newWalletBalance =
+//           currentWalletBalance +
+//           transfrCreditBalance;
+
+
+//         // ======================================
+//         // CLEAR TRANSFR CREDIT
+//         // ======================================
+
+//         tx.update(
+
+//           userRef,
+
+//           {
+
+//             transfrCreditBalance:
+//               0,
+
+//             walletMigrationStatus:
+//               "completed",
+
+//             walletMigrationAmount:
+//               transfrCreditBalance,
+
+//             walletMigrationReference:
+//               creditReference,
+
+//             nubanEnabled:
+//               true,
+
+//             tier:
+//               "TIER_2",
+
+//             notification:
+//               true,
+
+//             inappnotification:
+//               true,
+
+//             updatedAt:
+//               admin.firestore.FieldValue
+//                 .serverTimestamp()
+
+//           }
+
+//         );
+
+
+//         // ======================================
+//         // UPDATE CARD BALANCE
+//         // ======================================
+
+//         tx.set(
+
+//           cardRef,
+
+//           {
+
+//             xpressWallet: {
+
+//               ...freshCardData.xpressWallet,
+
+//               availableBalance:
+//                 newWalletBalance,
+
+//               tier:
+//                 "TIER_2",
+
+//               updatedAt:
+//                 admin.firestore.FieldValue
+//                   .serverTimestamp()
+
+//             }
+
+//           },
+
+//           {
+//             merge: true
+//           }
+
+//         );
+
+
+//         // ======================================
+//         // USER TRANSACTION
+//         // ======================================
+
+//         const transactionRef =
+//           userRef
+//             .collection("Transactions")
+//             .doc(creditReference);
+
+
+//         tx.set(
+
+//           transactionRef,
+
+//           {
+
+//             type:
+//               "TransfrCreditMigration",
+
+//             status:
+//               "success",
+
+//             amount:
+//               transfrCreditBalance,
+
+//             balance:
+//               newWalletBalance,
+
+//             balanceType:
+//               "xpress_wallet",
+
+//             paymentMethod:
+//               "transfr",
+
+//             transactionNo:
+//               creditReference,
+
+//             reference:
+//               creditReference,
+
+//             customerId:
+//               customer.id,
+
+//             walletId:
+//               wallet.id,
+
+//             accountNumber:
+//               wallet.accountNumber,
+
+//             tier:
+//               "TIER_2",
+
+//             date:
+//               admin.firestore.FieldValue
+//                 .serverTimestamp()
+
+//           }
+
+//         );
+
+
+//         // ======================================
+//         // GLOBAL TRANSACTION
+//         // ======================================
+
+//         const globalRef =
+//           db
+//             .collection("AllTransaction")
+//             .doc(creditReference);
+
+
+//         tx.set(
+
+//           globalRef,
+
+//           {
+
+//             type:
+//               "TransfrCreditMigration",
+
+//             amount:
+//               transfrCreditBalance,
+
+//             userId,
+
+//             cardId,
+
+//             customerId:
+//               customer.id,
+
+//             walletId:
+//               wallet.id,
+
+//             reference:
+//               creditReference,
+
+//             status:
+//               "success",
+
+//             paymentMethod:
+//               "transfr",
+
+//             tier:
+//               "TIER_2",
+
+//             date:
+//               admin.firestore.FieldValue
+//                 .serverTimestamp()
+
+//           }
+
+//         );
+
+
+//         // ======================================
+//         // TRANSFR LEDGER
+//         // ======================================
+
+//         const ledgerRef =
+//           db
+//             .collection("TransfrLedger")
+//             .doc(creditReference);
+
+
+//         tx.set(
+
+//           ledgerRef,
+
+//           {
+
+//             reference:
+//               creditReference,
+
+//             type:
+//               "NOMINAL_TO_TIER_2_MIGRATION",
+
+//             amount:
+//               transfrCreditBalance,
+
+//             currency:
+//               "NGN",
+
+//             userId,
+
+//             cardId,
+
+//             source:
+//               "transfr_credit",
+
+//             destination:
+//               "xpress_wallet",
+
+//             customerId:
+//               customer.id,
+
+//             walletId:
+//               wallet.id,
+
+//             accountNumber:
+//               wallet.accountNumber,
+
+//             tier:
+//               "TIER_2",
+
+//             status:
+//               "success",
+
+//             createdAt:
+//               admin.firestore.FieldValue
+//                 .serverTimestamp()
+
+//           }
+
+//         );
+
+//       }
+//     );
+
+
+//     // ==========================================
+//     // FINAL RESPONSE
+//     // ==========================================
+
+//     return res.json({
+
+//       success: true,
+
+//       message:
+//         "Tier 2 wallet created and Transfr credit transferred successfully",
+
+//       data: {
+
+//         cardId,
+
+//         tier:
+//           "TIER_2",
+
+//         customerId:
+//           customer.id,
+
+//         walletId:
+//           wallet.id,
+
+//         accountNumber:
+//           wallet.accountNumber,
+
+//         accountName:
+//           wallet.accountName,
+
+//         bankName:
+//           wallet.bankName,
+
+//         bankCode:
+//           wallet.bankCode,
+
+//         accountReference:
+//           wallet.accountReference,
+
+//         balance:
+//           Number(
+//             wallet.availableBalance || 0
+//           ) +
+//           transfrCreditBalance,
+
+//         status:
+//           wallet.status,
+
+//         transfrCreditTransferred:
+//           transfrCreditBalance,
+
+//         walletMigrationStatus:
+//           "completed"
+
+//       }
+
+//     });
+
+
+//   } catch (error) {
+
+//     console.error(
+//       "XPRESS TIER 2 WALLET ERROR:",
+//       error.response?.data ||
+//       error.message
+//     );
+
+
+//     return res.status(
+//       error.response?.status || 500
+//     ).json({
+
+//       success: false,
+
+//       message:
+//         error.response?.data?.message ||
+//         error.message ||
+//         "Unable to create Tier 2 wallet"
+
+//     });
+
+//   }
+
+// });
+
+
+
 app.post("/create-xpress-tier2-wallet", async (req, res) => {
   try {
-
     const {
       userId,
       cardId,
@@ -3964,1050 +5026,383 @@ app.post("/create-xpress-tier2-wallet", async (req, res) => {
       passportPhoto
     } = req.body;
 
-
-    // ==========================================
-    // VALIDATE REQUIRED FIELDS
-    // ==========================================
-
-    if (
-      !userId ||
-      !cardId ||
-      !bvn ||
-      !firstName ||
-      !lastName ||
-      !dateOfBirth ||
-      !phoneNumber ||
-      !email ||
-      !address ||
-      !passportPhoto
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "All Tier 2 fields are required"
-      });
+    // -------------------------------------------
+    // 1. VALIDATE REQUIRED FIELDS
+    // -------------------------------------------
+    if (!userId || !cardId || !bvn || !firstName || !lastName || !dateOfBirth || !phoneNumber || !email || !address || !passportPhoto) {
+      return res.status(400).json({ success: false, message: "All Tier 2 fields are required" });
     }
 
+    // -------------------------------------------
+    // 2. FIRESTORE REFERENCES
+    // -------------------------------------------
+    const userRef = db.collection("users").doc(userId);
+    const cardRef = userRef.collection("Cards").doc(cardId);
 
-    // ==========================================
-    // FIRESTORE REFERENCES
-    // ==========================================
-
-    const userRef =
-      db.collection("users").doc(userId);
-
-    const cardRef =
-      userRef
-        .collection("Cards")
-        .doc(cardId);
-
-
-    // ==========================================
-    // GET USER
-    // ==========================================
-
-    const userDoc =
-      await userRef.get();
-
-      const cardDoc =
-      await cardRef.get();
+    const [userDoc, cardDoc] = await Promise.all([userRef.get(), cardRef.get()]);
 
     if (!userDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    if (!cardDoc.exists) {
+      return res.status(404).json({ success: false, message: "Card not found" });
     }
 
-    const userData =
-      userDoc.data();
-  
+    const userData = userDoc.data();
+    const cardData = cardDoc.data();
+    const existingXpress = userData?.xpressWallet || cardData?.xpressWallet;
 
-       const cardData =
-      cardDoc.data();
+    // -------------------------------------------
+    // 3. DETERMINE UPGRADE PATH
+    // -------------------------------------------
+    const hasCustomerId = existingXpress?.customerId;
+    const currentTier = existingXpress?.tier || "TIER_1";
 
-
-    // ==========================================
-    // PREVENT DUPLICATE / DOWNGRADE
-    // ==========================================
-
-    if (
-      cardData.xpressWallet?.customerId &&
-      cardData.xpressWallet?.tier === "TIER_1"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "User already has a TIER 1 account, please upgrade to Transfr Gold for better experience.",
-        data: userData.xpressWallet
-      });
+    // Prevent downgrade or invalid upgrade
+    if (currentTier === "TIER_3") {
+      return res.status(400).json({ success: false, message: "User already has a TIER 3 account." });
     }
 
-
-    if (
-      userData.xpressWallet?.customerId &&
-      userData.xpressWallet?.tier === "TIER_2"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "User already has a TIER 2 account, please upgrade to Transfr Platinum for better experience.",
-        data: userData.xpressWallet
-      });
-    }
-
-
-    if (
-      userData.xpressWallet?.customerId &&
-      userData.xpressWallet?.tier === "TIER_3"
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "User already has a TIER 3 account.",
-        data: userData.xpressWallet
-      });
-    }
-
-
-    // ==========================================
-    // GET EXISTING TRANSFR CREDIT
-    // ==========================================
-
-    const transfrCreditBalance =
-      Number(
-        userData.transfrCreditBalance || 0
-      );
-
-    console.log(
-      "Existing Transfr Credit:",
-      transfrCreditBalance
-    );
-
-
-    // ==========================================
-    // UPLOAD PASSPORT PHOTO
-    // ==========================================
-
+    // Upload passport photo to Firebase Storage (always needed)
     let passportUrl = null;
-
     try {
-
-      const base64Data =
-        passportPhoto.replace(
-          /^data:image\/\w+;base64,/,
-          ""
-        );
-
-      const fileName =
-        `tier2-passports/${userId}_${Date.now()}.jpg`;
-
-      const file =
-        bucket.file(fileName);
-
-      const imageBuffer =
-        Buffer.from(
-          base64Data,
-          "base64"
-        );
-
-      await file.save(
-        imageBuffer,
-        {
-          metadata: {
-            contentType: "image/jpeg"
-          }
-        }
-      );
-
-
-      const [signedUrl] =
-        await file.getSignedUrl({
-          action: "read",
-          expires: "03-01-2080"
-        });
-
-      passportUrl =
-        signedUrl;
-
+      const base64Data = passportPhoto.replace(/^data:image\/\w+;base64,/, "");
+      const fileName = `tier2-passports/${userId}_${Date.now()}.jpg`;
+      const file = bucket.file(fileName);
+      const imageBuffer = Buffer.from(base64Data, "base64");
+      await file.save(imageBuffer, { metadata: { contentType: "image/jpeg" } });
+      const [signedUrl] = await file.getSignedUrl({ action: "read", expires: "03-01-2080" });
+      passportUrl = signedUrl;
     } catch (photoError) {
-
-      console.error(
-        "PASSPORT UPLOAD ERROR:",
-        photoError.message
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Passport photograph upload failed"
-      });
+      console.error("PASSPORT UPLOAD ERROR:", photoError.message);
+      return res.status(400).json({ success: false, message: "Passport photograph upload failed" });
     }
 
-
-    // ==========================================
-    // CREATE XPRESS TIER 2 WALLET
-    // ==========================================
-
-    const xpressResponse =
-      await axios.post(
-
-        `${process.env.XPRESS_BASE_URL}/wallet`,
-
-        {
-          tier: "TIER_2",
-          bvn,
-          firstName,
-          lastName,
-          dateOfBirth,
-          phoneNumber,
-          email,
-          address,
-
-          metadata: {
-            firebaseUserId: userId,
-            tier: "TIER_2",
-            passportPhoto: passportUrl
-          }
-        },
-
-        {
-          // headers: {
-          //   "Content-Type":
-          //     "application/json",
-
-          //   "X-Access-Token":
-          //     process.env.XPRESS_ACCESS_TOKEN,
-
-          //   "X-Refresh-Token":
-          //     process.env.XPRESS_REFRESH_TOKEN
-          // }
-
-
-                headers: {
-        'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-        'Content-Type': 'application/json',
-      },
-
-        }
-
-      );
-
-
-    const xpressData = xpressResponse.data;
-
-
-    // ==========================================
-    // CHECK XPRESS RESPONSE
-    // ==========================================
-
-    if (
-      !xpressData ||
-      !xpressData.customer ||
-      !xpressData.wallet
-    ) {
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "Invalid response from Xpress"
-      });
-
-    }
-
-
-    const customer =
-      xpressData.customer;
-
-    const wallet =
-      xpressData.wallet;
-
-
-    // ==========================================
-    // VERIFY TIER 2
-    // ==========================================
-
-    if (
-      customer.tier !== "TIER_2"
-    ) {
-
-      console.error(
-        "XPRESS RETURNED UNEXPECTED TIER:",
-        customer.tier
-      );
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "Wallet was not created as Tier 2",
-
-        tier:
-          customer.tier
-
-      });
-
-    }
-
-
-    // ==========================================
-    // SAVE XPRESS WALLET
-    // ==========================================
-
-    await cardRef.set({
-
-      xpressWallet: {
-
-        customerId:
-          customer.id,
-
-        walletId:
-          wallet.id,
-
-        accountNumber:
-          wallet.accountNumber,
-
-        accountType:
-          "Nuban",
-
-        accountName:
-          wallet.accountName,
-
-        bankName:
-          wallet.bankName,
-
-        bankCode:
-          wallet.bankCode,
-
-        accountReference:
-          wallet.accountReference,
-
-        availableBalance:
-          wallet.availableBalance || 0,
-
-        bookedBalance:
-          wallet.bookedBalance || 0,
-
-        currency:
-          wallet.currency,
-
-        status:
-          wallet.status,
-
-        tier:
-          customer.tier,
-
-        passportPhoto:
-          passportUrl,
-
-        createdAt:
-          admin.firestore.FieldValue
-            .serverTimestamp(),
-
-        updatedAt:
-          admin.firestore.FieldValue
-            .serverTimestamp()
-
-      }
-
-    }, {
-      merge: true
-    });
-
-
-    // ==========================================
-    // UPDATE USER BASIC INFORMATION
-    // ==========================================
-
-    await userRef.update({
-
-      tier:
-        customer.tier,
-
-      nubanEnabled:
-        true,
-
-      accountType:
-        "tiered",
-
-      notification:
-        true,
-
-      inappnotification:
-        true,
-
-      address,
-
-      passportPhoto:
-        passportUrl
-
-    });
-
-
-    // ==========================================
-    // NO TRANSFR CREDIT TO MIGRATE
-    // ==========================================
-
-    if (
-      transfrCreditBalance <= 0
-    ) {
-
-      return res.json({
-
-        success: true,
-
-        message:
-          "Tier 2 wallet created successfully",
-
-        data: {
-
-          cardId,
-
-          tier:
-            "TIER_2",
-
-          customerId:
-            customer.id,
-
-          walletId:
-            wallet.id,
-
-          accountNumber:
-            wallet.accountNumber,
-
-          accountName:
-            wallet.accountName,
-
-          bankName:
-            wallet.bankName,
-
-          bankCode:
-            wallet.bankCode,
-
-          accountReference:
-            wallet.accountReference,
-
-          balance:
-            Number(
-              wallet.availableBalance || 0
-            ),
-
-          status:
-            wallet.status,
-
-          transfrCreditTransferred:
-            0
-
-        }
-
-      });
-
-    }
-
-
-    // ==========================================
-    // CREDIT NEW XPRESS WALLET
-    // WITH TRANSFR CREDIT
-    // ==========================================
-
-    const creditReference =
-      `TIER2-MIGRATION-${userId}-${Date.now()}`;
-
-
-    let creditResponse;
-
-    try {
-
-      creditResponse =
-        await axios.post(
-
-          `${process.env.XPRESS_BASE_URL}/wallet/credit`,
-
+    // -------------------------------------------
+    // 4. XPRESS API CALL: CREATE or UPDATE
+    // -------------------------------------------
+    let xpressResponse;
+    let customer;
+    let wallet;
+
+    if (hasCustomerId) {
+      // ---- UPGRADE EXISTING CUSTOMER ----
+      try {
+        // Assuming Xpress has a PUT endpoint to update customer details & tier
+        xpressResponse = await axios.put(
+          `${process.env.XPRESS_BASE_URL}/customer/${existingXpress.customerId}`,
           {
-
-            amount:
-              transfrCreditBalance,
-
-            reference:
-              creditReference,
-
-            customerId:
-              customer.id,
-
+            tier: "TIER_2", // or "TIER_3" if applicable
+            bvn,
+            firstName,
+            lastName,
+            dateOfBirth,
+            phoneNumber,
+            email,
+            address,
             metadata: {
-
-              firebaseUserId:
-                userId,
-
-              cardId,
-
-              reason:
-                "Tier 2 Transfr Credit Migration",
-
-              source:
-                "transfr_credit",
-
-              tier:
-                "TIER_2"
-
+              passportPhoto: passportUrl,
+              firebaseUserId: userId,
+              upgradeFrom: currentTier,
+              upgradeTo: "TIER_2"
             }
-
           },
-
           {
-
-            // headers: {
-
-            //   "Content-Type":
-            //     "application/json",
-
-            //   "X-Access-Token":
-            //     process.env.XPRESS_ACCESS_TOKEN,
-
-            //   "X-Refresh-Token":
-            //     process.env.XPRESS_REFRESH_TOKEN
-
-            // }
-
-                  headers: {
-        'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-        'Content-Type': 'application/json',
-      },
-
-
-          }
-
-        );
-
-    } catch (creditError) {
-
-      console.error(
-        "XPRESS TIER 2 CREDIT ERROR:",
-        creditError.response?.data ||
-        creditError.message
-      );
-
-
-      // ========================================
-      // DO NOT CLEAR TRANSFR CREDIT
-      // ========================================
-
-      await userRef.update({
-
-        walletMigrationStatus:
-          "credit_failed",
-
-        walletMigrationAmount:
-          transfrCreditBalance,
-
-        walletMigrationReference:
-          creditReference
-
-      });
-
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "Tier 2 wallet was created, but your existing Transfr credit could not be transferred.",
-
-        data: {
-
-          tier:
-            "TIER_2",
-
-          accountNumber:
-            wallet.accountNumber,
-
-          transfrCredit:
-            transfrCreditBalance,
-
-          migrationStatus:
-            "credit_failed",
-
-          migrationReference:
-            creditReference
-
-        }
-
-      });
-
-    }
-
-
-    // ==========================================
-    // VERIFY CREDIT RESPONSE
-    // ==========================================
-
-    if (
-      !creditResponse.data ||
-      creditResponse.data.status !== true
-    ) {
-
-      await userRef.update({
-
-        walletMigrationStatus:
-          "credit_failed",
-
-        walletMigrationAmount:
-          transfrCreditBalance,
-
-        walletMigrationReference:
-          creditReference
-
-      });
-
-
-      return res.status(400).json({
-
-        success: false,
-
-        message:
-          "Tier 2 wallet created, but credit migration failed",
-
-        data: {
-
-          transfrCredit:
-            transfrCreditBalance,
-
-          migrationReference:
-            creditReference
-
-        }
-
-      });
-
-    }
-
-
-    // ==========================================
-    // XPRESS CREDIT SUCCESS
-    // ==========================================
-
-    console.log(
-      "TIER 2 XPRESS CREDIT SUCCESS:",
-      creditResponse.data
-    );
-
-
-    // ==========================================
-    // UPDATE FIRESTORE ATOMICALLY
-    // ==========================================
-
-    await db.runTransaction(
-      async (tx) => {
-
-        const freshUser =
-          await tx.get(userRef);
-
-        const freshCard =
-          await tx.get(cardRef);
-
-
-        if (!freshUser.exists) {
-          throw new Error(
-            "User no longer exists"
-          );
-        }
-
-
-        if (!freshCard.exists) {
-          throw new Error(
-            "Wallet card no longer exists"
-          );
-        }
-
-
-        const freshUserData =
-          freshUser.data();
-
-        const freshCardData =
-          freshCard.data();
-
-
-        const currentCredit =
-          Number(
-            freshUserData
-              .transfrCreditBalance || 0
-          );
-
-
-        // ======================================
-        // IMPORTANT
-        // ======================================
-
-        // Make sure another transaction did
-        // not change the credit while we were
-        // creating the wallet.
-
-        if (
-          currentCredit !==
-          transfrCreditBalance
-        ) {
-
-          throw new Error(
-            "Transfr credit changed during wallet creation. Manual reconciliation required."
-          );
-
-        }
-
-
-        const currentWalletBalance =
-          Number(
-            freshCardData
-              .xpressWallet
-              ?.availableBalance || 0
-          );
-
-
-        const newWalletBalance =
-          currentWalletBalance +
-          transfrCreditBalance;
-
-
-        // ======================================
-        // CLEAR TRANSFR CREDIT
-        // ======================================
-
-        tx.update(
-
-          userRef,
-
-          {
-
-            transfrCreditBalance:
-              0,
-
-            walletMigrationStatus:
-              "completed",
-
-            walletMigrationAmount:
-              transfrCreditBalance,
-
-            walletMigrationReference:
-              creditReference,
-
-            nubanEnabled:
-              true,
-
-            tier:
-              "TIER_2",
-
-            notification:
-              true,
-
-            inappnotification:
-              true,
-
-            updatedAt:
-              admin.firestore.FieldValue
-                .serverTimestamp()
-
-          }
-
-        );
-
-
-        // ======================================
-        // UPDATE CARD BALANCE
-        // ======================================
-
-        tx.set(
-
-          cardRef,
-
-          {
-
-            xpressWallet: {
-
-              ...freshCardData.xpressWallet,
-
-              availableBalance:
-                newWalletBalance,
-
-              tier:
-                "TIER_2",
-
-              updatedAt:
-                admin.firestore.FieldValue
-                  .serverTimestamp()
-
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json'
             }
-
-          },
-
-          {
-            merge: true
           }
-
         );
 
-
-        // ======================================
-        // USER TRANSACTION
-        // ======================================
-
-        const transactionRef =
-          userRef
-            .collection("Transactions")
-            .doc(creditReference);
-
-
-        tx.set(
-
-          transactionRef,
-
-          {
-
-            type:
-              "TransfrCreditMigration",
-
-            status:
-              "success",
-
-            amount:
-              transfrCreditBalance,
-
-            balance:
-              newWalletBalance,
-
-            balanceType:
-              "xpress_wallet",
-
-            paymentMethod:
-              "transfr",
-
-            transactionNo:
-              creditReference,
-
-            reference:
-              creditReference,
-
-            customerId:
-              customer.id,
-
-            walletId:
-              wallet.id,
-
-            accountNumber:
-              wallet.accountNumber,
-
-            tier:
-              "TIER_2",
-
-            date:
-              admin.firestore.FieldValue
-                .serverTimestamp()
-
-          }
-
-        );
-
-
-        // ======================================
-        // GLOBAL TRANSACTION
-        // ======================================
-
-        const globalRef =
-          db
-            .collection("AllTransaction")
-            .doc(creditReference);
-
-
-        tx.set(
-
-          globalRef,
-
-          {
-
-            type:
-              "TransfrCreditMigration",
-
-            amount:
-              transfrCreditBalance,
-
-            userId,
-
-            cardId,
-
-            customerId:
-              customer.id,
-
-            walletId:
-              wallet.id,
-
-            reference:
-              creditReference,
-
-            status:
-              "success",
-
-            paymentMethod:
-              "transfr",
-
-            tier:
-              "TIER_2",
-
-            date:
-              admin.firestore.FieldValue
-                .serverTimestamp()
-
-          }
-
-        );
-
-
-        // ======================================
-        // TRANSFR LEDGER
-        // ======================================
-
-        const ledgerRef =
-          db
-            .collection("TransfrLedger")
-            .doc(creditReference);
-
-
-        tx.set(
-
-          ledgerRef,
-
-          {
-
-            reference:
-              creditReference,
-
-            type:
-              "NOMINAL_TO_TIER_2_MIGRATION",
-
-            amount:
-              transfrCreditBalance,
-
-            currency:
-              "NGN",
-
-            userId,
-
-            cardId,
-
-            source:
-              "transfr_credit",
-
-            destination:
-              "xpress_wallet",
-
-            customerId:
-              customer.id,
-
-            walletId:
-              wallet.id,
-
-            accountNumber:
-              wallet.accountNumber,
-
-            tier:
-              "TIER_2",
-
-            status:
-              "success",
-
-            createdAt:
-              admin.firestore.FieldValue
-                .serverTimestamp()
-
-          }
-
-        );
-
+        // After upgrade, we need to fetch the updated wallet info (balance, etc.)
+        // The update endpoint may return the updated customer + wallet, or we can fetch it separately.
+        // We'll assume it returns the updated data.
+        customer = xpressResponse.data?.customer;
+        wallet = xpressResponse.data?.wallet;
+
+        if (!customer || !wallet) {
+          // If the update doesn't return wallet, fetch it separately
+          const walletResponse = await axios.get(
+            `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+            { params: { customerId: existingXpress.customerId }, headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` } }
+          );
+          wallet = walletResponse.data?.wallet;
+          customer = { id: existingXpress.customerId, tier: "TIER_2" }; // minimal info
+        }
+
+      } catch (updateError) {
+        console.error("XPRESS UPDATE ERROR:", updateError.response?.data || updateError.message);
+        return res.status(updateError.response?.status || 400).json({
+          success: false,
+          message: updateError.response?.data?.message || "Failed to upgrade customer tier",
+        });
       }
-    );
 
+    } else {
+      // ---- CREATE NEW CUSTOMER / WALLET (as before) ----
+      try {
+        xpressResponse = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/wallet`,
+          {
+            tier: "TIER_2",
+            bvn,
+            firstName,
+            lastName,
+            dateOfBirth,
+            phoneNumber,
+            email,
+            address,
+            metadata: {
+              firebaseUserId: userId,
+              tier: "TIER_2",
+              passportPhoto: passportUrl
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
 
-    // ==========================================
-    // FINAL RESPONSE
-    // ==========================================
+        customer = xpressResponse.data?.customer;
+        wallet = xpressResponse.data?.wallet;
+
+        if (!customer || !wallet) {
+          return res.status(500).json({ success: false, message: "Invalid response from Xpress" });
+        }
+
+      } catch (createError) {
+        console.error("XPRESS CREATE ERROR:", createError.response?.data || createError.message);
+        return res.status(createError.response?.status || 400).json({
+          success: false,
+          message: createError.response?.data?.message || "Failed to create Tier 2 wallet",
+        });
+      }
+    }
+
+    // Verify tier
+    if (customer.tier !== "TIER_2") {
+      console.error("XPRESS RETURNED UNEXPECTED TIER:", customer.tier);
+      return res.status(400).json({ success: false, message: "Wallet was not created as Tier 2" });
+    }
+
+    // -------------------------------------------
+    // 5. SAVE / UPDATE FIRESTORE
+    // -------------------------------------------
+    const xpressWalletData = {
+      customerId: customer.id,
+      walletId: wallet.id,
+      accountNumber: wallet.accountNumber,
+      accountType: "Nuban",
+      accountName: wallet.accountName,
+      bankName: wallet.bankName,
+      bankCode: wallet.bankCode,
+      accountReference: wallet.accountReference,
+      availableBalance: wallet.availableBalance || 0,
+      bookedBalance: wallet.bookedBalance || 0,
+      currency: wallet.currency || "NGN",
+      status: wallet.status || "ACTIVE",
+      tier: customer.tier,
+      passportPhoto: passportUrl,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // If we are upgrading, we keep the original createdAt
+    if (hasCustomerId) {
+      // Preserve creation date from existing record
+      const existingData = existingXpress;
+      xpressWalletData.createdAt = existingData.createdAt || admin.firestore.FieldValue.serverTimestamp();
+    } else {
+      xpressWalletData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    await cardRef.set({ xpressWallet: xpressWalletData }, { merge: true });
+
+    // Update user document
+    await userRef.update({
+      tier: customer.tier,
+      nubanEnabled: true,
+      accountType: "tiered",
+      notification: true,
+      inappnotification: true,
+      address,
+      passportPhoto: passportUrl,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // -------------------------------------------
+    // 6. HANDLE TRANSFR CREDIT MIGRATION
+    // -------------------------------------------
+    const transfrCreditBalance = Number(userData.transfrCreditBalance || 0);
+
+    if (transfrCreditBalance > 0) {
+      const creditReference = `TIER2-MIGRATION-${userId}-${Date.now()}`;
+      try {
+        const creditResponse = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+          {
+            amount: transfrCreditBalance,
+            reference: creditReference,
+            customerId: customer.id,
+            metadata: {
+              firebaseUserId: userId,
+              cardId,
+              reason: "Tier 2 Transfr Credit Migration",
+              source: "transfr_credit",
+              tier: "TIER_2"
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        if (!creditResponse.data || creditResponse.data.status !== true) {
+          // Log failure but don't fail the upgrade; just note the migration failed
+          console.warn("Credit migration failed after tier upgrade:", creditResponse.data);
+          await userRef.update({
+            walletMigrationStatus: "credit_failed",
+            walletMigrationAmount: transfrCreditBalance,
+            walletMigrationReference: creditReference,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          // Success: clear Transfr credit and update wallet balance
+          await db.runTransaction(async (tx) => {
+            const freshUser = await tx.get(userRef);
+            if (!freshUser.exists) throw new Error("User no longer exists");
+            const freshCard = await tx.get(cardRef);
+            if (!freshCard.exists) throw new Error("Card no longer exists");
+
+            const currentCredit = Number(freshUser.data().transfrCreditBalance || 0);
+            if (currentCredit !== transfrCreditBalance) {
+              throw new Error("Credit balance changed during migration");
+            }
+
+            const currentWalletBalance = Number(freshCard.data()?.xpressWallet?.availableBalance || 0);
+            const newWalletBalance = currentWalletBalance + transfrCreditBalance;
+
+            tx.update(userRef, {
+              transfrCreditBalance: 0,
+              walletMigrationStatus: "completed",
+              walletMigrationAmount: transfrCreditBalance,
+              walletMigrationReference: creditReference,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            tx.set(cardRef, {
+              "xpressWallet.availableBalance": newWalletBalance,
+              "xpressWallet.updatedAt": admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            // Record transaction
+            const txnRef = userRef.collection("Transactions").doc(creditReference);
+            tx.set(txnRef, {
+              type: "TransfrCreditMigration",
+              status: "success",
+              amount: transfrCreditBalance,
+              balance: newWalletBalance,
+              balanceType: "xpress_wallet",
+              paymentMethod: "transfr",
+              transactionNo: creditReference,
+              reference: creditReference,
+              customerId: customer.id,
+              walletId: wallet.id,
+              accountNumber: wallet.accountNumber,
+              tier: "TIER_2",
+              date: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            const globalRef = db.collection("AllTransaction").doc(creditReference);
+            tx.set(globalRef, {
+              type: "TransfrCreditMigration",
+              amount: transfrCreditBalance,
+              userId,
+              cardId,
+              customerId: customer.id,
+              walletId: wallet.id,
+              reference: creditReference,
+              status: "success",
+              paymentMethod: "transfr",
+              tier: "TIER_2",
+              date: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            const ledgerRef = db.collection("TransfrLedger").doc(creditReference);
+            tx.set(ledgerRef, {
+              reference: creditReference,
+              type: "NOMINAL_TO_TIER_2_MIGRATION",
+              amount: transfrCreditBalance,
+              currency: "NGN",
+              userId,
+              cardId,
+              source: "transfr_credit",
+              destination: "xpress_wallet",
+              customerId: customer.id,
+              walletId: wallet.id,
+              accountNumber: wallet.accountNumber,
+              tier: "TIER_2",
+              status: "success",
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          });
+
+          console.log("✅ Credit migration completed for Tier 2 upgrade");
+        }
+      } catch (creditError) {
+        console.error("Credit migration error:", creditError.message);
+        // Continue – the wallet is upgraded, just credit migration failed
+        await userRef.update({
+          walletMigrationStatus: "credit_failed",
+          walletMigrationAmount: transfrCreditBalance,
+          walletMigrationReference: creditReference,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    }
+
+    // -------------------------------------------
+    // 7. FINAL RESPONSE
+    // -------------------------------------------
+    const finalBalance = Number(wallet.availableBalance || 0) + (transfrCreditBalance > 0 ? transfrCreditBalance : 0);
 
     return res.json({
-
       success: true,
-
-      message:
-        "Tier 2 wallet created and Transfr credit transferred successfully",
-
+      message: hasCustomerId
+        ? "Tier 2 upgrade completed successfully"
+        : "Tier 2 wallet created successfully",
       data: {
-
         cardId,
-
-        tier:
-          "TIER_2",
-
-        customerId:
-          customer.id,
-
-        walletId:
-          wallet.id,
-
-        accountNumber:
-          wallet.accountNumber,
-
-        accountName:
-          wallet.accountName,
-
-        bankName:
-          wallet.bankName,
-
-        bankCode:
-          wallet.bankCode,
-
-        accountReference:
-          wallet.accountReference,
-
-        balance:
-          Number(
-            wallet.availableBalance || 0
-          ) +
-          transfrCreditBalance,
-
-        status:
-          wallet.status,
-
-        transfrCreditTransferred:
-          transfrCreditBalance,
-
-        walletMigrationStatus:
-          "completed"
-
+        tier: "TIER_2",
+        customerId: customer.id,
+        walletId: wallet.id,
+        accountNumber: wallet.accountNumber,
+        accountName: wallet.accountName,
+        bankName: wallet.bankName,
+        bankCode: wallet.bankCode,
+        accountReference: wallet.accountReference,
+        balance: finalBalance,
+        status: wallet.status,
+        transfrCreditTransferred: transfrCreditBalance > 0 ? transfrCreditBalance : 0,
+        walletMigrationStatus: transfrCreditBalance > 0 ? "completed" : "no_credit"
       }
-
     });
-
 
   } catch (error) {
-
-    console.error(
-      "XPRESS TIER 2 WALLET ERROR:",
-      error.response?.data ||
-      error.message
-    );
-
-
-    return res.status(
-      error.response?.status || 500
-    ).json({
-
+    console.error("XPRESS TIER 2 WALLET ERROR:", error.response?.data || error.message);
+    return res.status(error.response?.status || 500).json({
       success: false,
-
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Unable to create Tier 2 wallet"
-
+      message: error.response?.data?.message || error.message || "Unable to create/upgrade Tier 2 wallet"
     });
-
   }
-
 });
+
 
 app.post("/create-xpress-tier3-wallet", async (req, res) => {
   try {
@@ -5025,83 +5420,63 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
       utilityBill
     } = req.body;
 
-    // ==========================================
-    // VALIDATE
-    // ==========================================
-
-    if (
-      !userId ||
-      !cardId ||
-      !bvn ||
-      !firstName ||
-      !lastName ||
-      !dateOfBirth ||
-      !phoneNumber ||
-      !email ||
-      !address ||
-      !passportPhoto ||
-      !utilityBill
-    ) {
+    // -------------------------------------------
+    // 1. VALIDATE
+    // -------------------------------------------
+    if (!userId || !cardId || !bvn || !firstName || !lastName || !dateOfBirth || !phoneNumber || !email || !address || !passportPhoto || !utilityBill) {
       return res.status(400).json({
         success: false,
         message: "All Tier 3 information and documents are required."
       });
     }
 
+    // -------------------------------------------
+    // 2. FIRESTORE REFERENCES
+    // -------------------------------------------
     const userRef = db.collection("users").doc(userId);
     const cardRef = userRef.collection("Cards").doc(cardId);
 
-    const userDoc = await userRef.get();
-    const cardDoc = await cardRef.get();
+    const [userDoc, cardDoc] = await Promise.all([userRef.get(), cardRef.get()]);
 
     if (!userDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found."
-      });
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+    if (!cardDoc.exists) {
+      return res.status(404).json({ success: false, message: "Card not found." });
     }
 
     const userData = userDoc.data();
     const cardData = cardDoc.data();
+    const existingXpress = userData?.xpressWallet || cardData?.xpressWallet;
     const transfrCreditBalance = Number(userData.transfrCreditBalance || 0);
 
-    // ==========================================
-    // PREVENT DUPLICATE
-    // ==========================================
+    // -------------------------------------------
+    // 3. DETERMINE UPGRADE PATH
+    // -------------------------------------------
+    const hasCustomerId = existingXpress?.customerId;
+    const currentTier = existingXpress?.tier || null;
 
-    if (cardData.xpressWallet?.customerId) {
-      return res.status(400).json({
-        success: false,
-        message: `User already has a ${userData.xpressWallet.tier} account.`,
-        data: userData.xpressWallet
-      });
+    // Prevent downgrade or invalid upgrade
+    if (currentTier === "TIER_3") {
+      return res.status(400).json({ success: false, message: "User already has a TIER 3 account." });
     }
 
-    // ==========================================
-    // FILE UPLOAD HELPER
-    // ==========================================
-
+    // -------------------------------------------
+    // 4. FILE UPLOAD HELPER
+    // -------------------------------------------
     const uploadBase64File = async (base64, path, contentType) => {
       const clean = base64.replace(/^data:[^;]+;base64,/, "");
-
       const file = bucket.file(path);
-
       await file.save(Buffer.from(clean, "base64"), {
         metadata: { contentType },
         resumable: false
       });
-
       const [url] = await file.getSignedUrl({
         action: "read",
         expires: "12-31-2035"
       });
-
       return url;
     };
-
-    // ==========================================
-    // UPLOAD DOCUMENTS
-    // ==========================================
 
     const timestamp = Date.now();
 
@@ -5117,196 +5492,293 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
       "image/jpeg"
     );
 
-    // ==========================================
-    // CREATE XPRESS WALLET
-    // ==========================================
+    // -------------------------------------------
+    // 5. XPRESS API: CREATE or UPGRADE
+    // -------------------------------------------
+    let customer;
+    let wallet;
+    let xpressResponse;
 
-    const xpressRes = await axios.post(
-      `${process.env.XPRESS_BASE_URL}/wallet`,
-      {
-        bvn,
-        firstName,
-        lastName,
-        dateOfBirth,
-        phoneNumber,
-        email,
-        address,
+    if (hasCustomerId) {
+      // ---- UPGRADE EXISTING CUSTOMER TO TIER 3 ----
+      try {
+        xpressResponse = await axios.put(
+          `${process.env.XPRESS_BASE_URL}/customer/${existingXpress.customerId}`,
+          {
+            tier: "TIER_3",
+            bvn,
+            firstName,
+            lastName,
+            dateOfBirth,
+            phoneNumber,
+            email,
+            address,
+            metadata: {
+              passportPhoto: passportUrl,
+              utilityBill: utilityBillUrl,
+              firebaseUserId: userId,
+              upgradeFrom: currentTier,
+              upgradeTo: "TIER_3"
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
 
-        metadata: {
-          firebaseUserId: userId,
-          requestedTier: "TIER_3",
-          passportPhotoUrl: passportUrl,
-          utilityBillUrl: utilityBillUrl
+        // The update endpoint may return updated customer + wallet
+        customer = xpressResponse.data?.customer;
+        wallet = xpressResponse.data?.wallet;
+
+        if (!customer || !wallet) {
+          // If not returned, fetch wallet separately
+          const walletResponse = await axios.get(
+            `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+            {
+              params: { customerId: existingXpress.customerId },
+              headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` }
+            }
+          );
+          wallet = walletResponse.data?.wallet;
+          customer = { id: existingXpress.customerId, tier: "TIER_3" };
         }
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Access-Token": process.env.XPRESS_ACCESS_TOKEN,
-          "X-Refresh-Token": process.env.XPRESS_REFRESH_TOKEN
+
+        if (!customer || !wallet) {
+          throw new Error("Failed to retrieve updated customer/wallet data.");
         }
+
+      } catch (updateError) {
+        console.error("XPRESS UPGRADE ERROR:", updateError.response?.data || updateError.message);
+        return res.status(updateError.response?.status || 400).json({
+          success: false,
+          message: updateError.response?.data?.message || "Failed to upgrade customer to Tier 3.",
+        });
       }
-    );
 
-    const customer = xpressRes.data.customer;
-    const wallet = xpressRes.data.wallet;
+    } else {
+      // ---- CREATE NEW CUSTOMER / WALLET ----
+      try {
+        xpressResponse = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/wallet`,
+          {
+            tier: "TIER_3",
+            bvn,
+            firstName,
+            lastName,
+            dateOfBirth,
+            phoneNumber,
+            email,
+            address,
+            metadata: {
+              firebaseUserId: userId,
+              requestedTier: "TIER_3",
+              passportPhotoUrl: passportUrl,
+              utilityBillUrl: utilityBillUrl
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
 
-    if (!customer || !wallet) {
-      return res.status(500).json({
-        success: false,
-        message: "Invalid response from Xpress."
-      });
+        customer = xpressResponse.data?.customer;
+        wallet = xpressResponse.data?.wallet;
+
+        if (!customer || !wallet) {
+          return res.status(500).json({ success: false, message: "Invalid response from Xpress." });
+        }
+
+      } catch (createError) {
+        console.error("XPRESS CREATE ERROR:", createError.response?.data || createError.message);
+        return res.status(createError.response?.status || 400).json({
+          success: false,
+          message: createError.response?.data?.message || "Failed to create Tier 3 wallet.",
+        });
+      }
     }
 
-    // ==========================================
-    // VERIFY TIER 3
-    // ==========================================
-
+    // Verify tier
     if (customer.tier !== "TIER_3") {
       return res.status(400).json({
         success: false,
-        message: "Wallet was not created as Tier 3.",
-        tier: customer.tier
+        message: `Wallet was not created as Tier 3. Current tier: ${customer.tier}`
       });
     }
 
-    // ==========================================
-    // SAVE CARD
-    // ==========================================
+    // -------------------------------------------
+    // 6. SAVE / UPDATE FIRESTORE
+    // -------------------------------------------
+    const xpressWalletData = {
+      customerId: customer.id,
+      walletId: wallet.id,
+      accountNumber: wallet.accountNumber,
+      accountType: "Nuban",
+      accountName: wallet.accountName,
+      bankName: wallet.bankName,
+      bankCode: wallet.bankCode,
+      accountReference: wallet.accountReference,
+      availableBalance: wallet.availableBalance || 0,
+      bookedBalance: wallet.bookedBalance || 0,
+      currency: wallet.currency || "NGN",
+      status: wallet.status || "ACTIVE",
+      tier: "TIER_3",
+      passportPhoto: passportUrl,
+      utilityBill: utilityBillUrl,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
 
-    await cardRef.set(
-      {
-        xpressWallet: {
-          customerId: customer.id,
-          walletId: wallet.id,
-          accountNumber: wallet.accountNumber,
-          accountType: "Nuban",
-          accountName: wallet.accountName,
-          bankName: wallet.bankName,
-          bankCode: wallet.bankCode,
-          accountReference: wallet.accountReference,
-          availableBalance: wallet.availableBalance || 0,
-          bookedBalance: wallet.bookedBalance || 0,
-          currency: wallet.currency,
-          status: wallet.status,
-          tier: customer.tier,
-          passportPhoto: passportUrl,
-          utilityBill: utilityBillUrl,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }
-      },
-      { merge: true }
-    );
+    if (hasCustomerId) {
+      // Preserve creation date from existing record
+      xpressWalletData.createdAt = existingXpress.createdAt || admin.firestore.FieldValue.serverTimestamp();
+    } else {
+      xpressWalletData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    await cardRef.set({ xpressWallet: xpressWalletData }, { merge: true });
 
     await userRef.update({
       tier: "TIER_3",
       accountType: "tiered",
       nubanEnabled: true,
       notification: true,
-      inappnotification: true
+      inappnotification: true,
+      passportPhoto: passportUrl,
+      utilityBill: utilityBillUrl,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // ==========================================
-    // MIGRATE TRANSFR CREDIT
-    // ==========================================
-
+    // -------------------------------------------
+    // 7. MIGRATE TRANSFR CREDIT (if any)
+    // -------------------------------------------
     if (transfrCreditBalance > 0) {
       const migrationRef = `TIER3-MIG-${userId}-${Date.now()}`;
 
-      const creditRes = await axios.post(
-        `${process.env.XPRESS_BASE_URL}/wallet/credit`,
-        {
-          customerId: customer.id,
-          amount: transfrCreditBalance,
-          reference: migrationRef,
-          metadata: {
-            firebaseUserId: userId,
-            source: "transfr_credit",
-            tier: "TIER_3"
+      try {
+        const creditRes = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+          {
+            customerId: customer.id,
+            amount: transfrCreditBalance,
+            reference: migrationRef,
+            metadata: {
+              firebaseUserId: userId,
+              source: "transfr_credit",
+              tier: "TIER_3"
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            }
           }
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Access-Token": process.env.XPRESS_ACCESS_TOKEN,
-            "X-Refresh-Token": process.env.XPRESS_REFRESH_TOKEN
-          }
-        }
-      );
+        );
 
-      if (!creditRes.data || creditRes.data.status !== true) {
+        if (!creditRes.data || creditRes.data.status !== true) {
+          console.warn("Credit migration failed:", creditRes.data);
+          await userRef.update({
+            walletMigrationStatus: "credit_failed",
+            walletMigrationAmount: transfrCreditBalance,
+            walletMigrationReference: migrationRef,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          // Success: clear Transfr credit and update wallet balance
+          await db.runTransaction(async tx => {
+            const freshUser = await tx.get(userRef);
+            if (!freshUser.exists) throw new Error("User no longer exists");
+            const freshCard = await tx.get(cardRef);
+            if (!freshCard.exists) throw new Error("Card no longer exists");
+
+            const currentCredit = Number(freshUser.data().transfrCreditBalance || 0);
+            if (currentCredit !== transfrCreditBalance) {
+              throw new Error("Credit balance changed during migration");
+            }
+
+            const currentWalletBalance = Number(freshCard.data()?.xpressWallet?.availableBalance || 0);
+            const newWalletBalance = currentWalletBalance + transfrCreditBalance;
+
+            tx.update(userRef, {
+              transfrCreditBalance: 0,
+              walletMigrationStatus: "completed",
+              walletMigrationAmount: transfrCreditBalance,
+              walletMigrationReference: migrationRef,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            tx.set(cardRef, {
+              "xpressWallet.availableBalance": newWalletBalance,
+              "xpressWallet.updatedAt": admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            // Transaction records
+            const txnRef = userRef.collection("Transactions").doc(migrationRef);
+            tx.set(txnRef, {
+              type: "TransfrCreditMigration",
+              amount: transfrCreditBalance,
+              status: "success",
+              tier: "TIER_3",
+              balance: newWalletBalance,
+              transactionNo: migrationRef,
+              reference: migrationRef,
+              paymentMethod: "transfr",
+              date: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            const globalRef = db.collection("AllTransaction").doc(migrationRef);
+            tx.set(globalRef, {
+              type: "TransfrCreditMigration",
+              amount: transfrCreditBalance,
+              userId,
+              tier: "TIER_3",
+              reference: migrationRef,
+              status: "success",
+              date: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            const ledgerRef = db.collection("TransfrLedger").doc(migrationRef);
+            tx.set(ledgerRef, {
+              type: "NOMINAL_TO_TIER_3_MIGRATION",
+              amount: transfrCreditBalance,
+              userId,
+              customerId: customer.id,
+              walletId: wallet.id,
+              reference: migrationRef,
+              status: "success",
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          });
+
+          console.log("✅ Credit migration completed for Tier 3 upgrade");
+        }
+      } catch (creditError) {
+        console.error("Credit migration error:", creditError.message);
         await userRef.update({
           walletMigrationStatus: "credit_failed",
           walletMigrationAmount: transfrCreditBalance,
-          walletMigrationReference: migrationRef
+          walletMigrationReference: migrationRef,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-
-        return res.status(400).json({
-          success: false,
-          message:
-            "Tier 3 wallet created, but Transfr credit migration failed."
-        });
+        // Continue – the wallet is upgraded, just credit migration failed
       }
-
-      await db.runTransaction(async tx => {
-        tx.update(userRef, {
-          transfrCreditBalance: 0,
-          walletMigrationStatus: "completed",
-          walletMigrationAmount: transfrCreditBalance,
-          walletMigrationReference: migrationRef
-        });
-
-        tx.set(
-          cardRef,
-          {
-            "xpressWallet.availableBalance":
-              Number(wallet.availableBalance || 0) + transfrCreditBalance
-          },
-          { merge: true }
-        );
-
-        tx.set(userRef.collection("Transactions").doc(migrationRef), {
-          type: "TransfrCreditMigration",
-          amount: transfrCreditBalance,
-          status: "success",
-          tier: "TIER_3",
-          balance:
-            Number(wallet.availableBalance || 0) + transfrCreditBalance,
-          transactionNo: migrationRef,
-          paymentMethod: "transfr",
-          date: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        tx.set(db.collection("AllTransaction").doc(migrationRef), {
-          type: "TransfrCreditMigration",
-          amount: transfrCreditBalance,
-          userId,
-          tier: "TIER_3",
-          reference: migrationRef,
-          date: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        tx.set(db.collection("TransfrLedger").doc(migrationRef), {
-          type: "NOMINAL_TO_TIER_3_MIGRATION",
-          amount: transfrCreditBalance,
-          userId,
-          customerId: customer.id,
-          walletId: wallet.id,
-          reference: migrationRef,
-          status: "success",
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-      });
     }
 
-    // ==========================================
-    // RESPONSE
-    // ==========================================
+    // -------------------------------------------
+    // 8. FINAL RESPONSE
+    // -------------------------------------------
+    const finalBalance = Number(wallet.availableBalance || 0) + (transfrCreditBalance > 0 ? transfrCreditBalance : 0);
 
     return res.status(201).json({
       success: true,
-      message: "Tier 3 wallet created successfully.",
+      message: hasCustomerId
+        ? "Tier 3 upgrade completed successfully."
+        : "Tier 3 wallet created successfully.",
       data: {
         cardId,
         tier: "TIER_3",
@@ -5317,26 +5789,21 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
         bankName: wallet.bankName,
         bankCode: wallet.bankCode,
         accountReference: wallet.accountReference,
-        balance:
-          Number(wallet.availableBalance || 0) + transfrCreditBalance,
+        balance: finalBalance,
         status: wallet.status,
-        transfrCreditTransferred: transfrCreditBalance
+        transfrCreditTransferred: transfrCreditBalance,
+        walletMigrationStatus: transfrCreditBalance > 0 ? "completed" : "no_credit"
       }
     });
-  } catch (error) {
-    console.error(
-      "TIER 3 WALLET ERROR:",
-      error.response?.data || error.message
-    );
 
+  } catch (error) {
+    console.error("TIER 3 WALLET ERROR:", error.response?.data || error.message);
     return res.status(error.response?.status || 500).json({
       success: false,
-      message:
-        error.response?.data?.message || "Tier 3 wallet creation failed."
+      message: error.response?.data?.message || "Tier 3 wallet creation/upgrade failed."
     });
   }
-});
-
+});  
 
 // server.js
 
