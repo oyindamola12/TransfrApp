@@ -8,7 +8,7 @@ const cors = require("cors");
 const crypto = require("crypto");
 const CryptoJS = require( "crypto-js");
 require("dotenv").config(); 
-const webhookRoutes = require('./routes/webhook');
+const webhookRoutes = require('./routes/xpress/webhook');
 app.use(webhookRoutes);
 const Flutterwave = require('flutterwave-node-v3');
 // const { type } = require("os");
