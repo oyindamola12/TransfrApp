@@ -87,6 +87,7 @@ const IGNORED_RELIGIONS = ["religion", "ẹsin", "addini", "okpukpe"];
 const IGNORED_GENDERS = ["gender", "ẹ̀ya", "jinsi", "agbacha"];
 const IGNORED_STATES = ["location", "ipinle", "jihar", "steeti"];
 const IGNORED_LGAS = ["local govt", "agbegbe", "wurin", "mpaghara"];
+
 const IGNORED_AGE_RANGES = [
   "select your age range",
   "ọjọ ori",
@@ -5699,13 +5700,7 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
   }
 }); 
 
-// server.js
 
-/**
- * POST /xpress-customer-data
- * Get customer and wallet details from Xpress using customerId from request body
- */
-// server.js
 
 // app.post('/xpress-customer-data', async (req, res) => {
 //   try {
