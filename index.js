@@ -11423,7 +11423,9 @@ app.post("/health-scan", async (req, res) => {
 });
 
 
-
+app.get('/health', (req, res) => {    // 3. Health route
+  res.json({ status: 'ok' });
+});
 // =====================================================
 // IMPORTS (adjust for your setup)
 // =====================================================
