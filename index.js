@@ -79,23 +79,26 @@ admin.initializeApp({
 
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
-
 const XPRESS_BASE_URL = process.env.XPRESS_BASE_URL;
 const PROVIDUS_SECRET_KEY = process.env.PROVIDUS_SECRET_KEY;
 const GIVEAWAY_FEE_RATE = 0.05; // 5% platform fee
-
 const IGNORED_RELIGIONS = ["religion", "ẹsin", "addini", "okpukpe"];
 const IGNORED_GENDERS = ["gender", "ẹ̀ya", "jinsi", "agbacha"];
 const IGNORED_STATES = ["location", "ipinle", "jihar", "steeti"];
 const IGNORED_LGAS = ["local govt", "agbegbe", "wurin", "mpaghara"];
 
+let bankCache = {
+  data: null,
+  timestamp: 0,
+};
+
+const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
 const IGNORED_AGE_RANGES = [
   "select your age range",
   "ọjọ ori",
   "shekaru",
   "afọ",
 ];
-
 const BUSINESS_TYPE_MAP = {
   "shopping voucher": "store",
   "restaurant voucher": "restaurant",
@@ -103,7 +106,6 @@ const BUSINESS_TYPE_MAP = {
   "mystery box": "mystery box",
   "ticket": "ticket",
 };
-
 // Firestore allows 500 writes per batch.
 // Each recipient uses ~5 writes, so chunk at 80 recipients per batch
 // to stay safely under the limit (80 * 5 = 400, + global writes = ~450).
@@ -178,6 +180,120 @@ app.get("/ping", (req, res) => {
 //     res.status(500).json({ success: false, message: "Internal server error" });
 //   }
 // });
+
+
+// =====================================================
+// GET BANKS LIST (With 1-hour In-Memory Cache)
+// =====================================================
+
+app.get("/xpress/banks", async (req, res) => {
+  try {
+    const now = Date.now();
+
+    // Return cached data if it exists and is less than 1 hour old
+    if (bankCache.data && now - bankCache.timestamp < CACHE_DURATION_MS) {
+      return res.json({ success: true, banks: bankCache.data });
+    }
+
+    // Fetch fresh data from Xpress
+    const response = await axios.get(
+      `${process.env.XPRESS_BASE_URL}/transfer/banks`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000, // Always add a timeout
+      }
+    );
+
+    const banks = response.data?.banks;
+
+    if (!banks || !Array.isArray(banks)) {
+      return res.status(500).json({
+        success: false,
+        message: "Invalid response format from Xpress",
+      });
+    }
+
+    // Save to cache
+    bankCache = {
+      data: banks,
+      timestamp: now,
+    };
+
+    return res.json({ success: true, banks });
+  } catch (error) {
+    console.error("XPRESS FETCH BANKS ERROR:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch bank list",
+    });
+  }
+});
+
+// =====================================================
+// RESOLVE BANK ACCOUNT NAME
+// =====================================================
+app.get("/xpress/resolve-account", async (req, res) => {
+  const { accountNumber, sortCode } = req.query;
+
+  // 1. Validate input
+  if (!accountNumber || !sortCode) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing accountNumber or sortCode",
+    });
+  }
+
+  try {
+    // 2. Call Xpress API
+    const response = await axios.get(
+      `${process.env.XPRESS_BASE_URL}/transfer/account/details`,
+      {
+        params: {
+          sortCode: sortCode,
+          accountNumber: accountNumber,
+        },
+        headers: {
+          Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000, // Always use a timeout
+      }
+    );
+
+    // 3. Extract the name from the response
+    // Xpress typically returns { data: { name: "JOHN DOE" } }
+    const accountName = response.data?.data?.name || response.data?.account?.accountName;
+
+    if (!accountName) {
+      return res.status(404).json({
+        success: false,
+        message: "Account details not found",
+      });
+    }
+
+    // 4. Return the resolved name
+    return res.json({
+      success: true,
+      accountName: accountName,
+    });
+  } catch (error) {
+    console.error(
+      "XPRESS RESOLVE ACCOUNT ERROR:",
+      error.response?.data || error.message
+    );
+
+    // Return the specific error message from Xpress if available
+    return res.status(400).json({
+      success: false,
+      message:
+        error.response?.data?.message ||
+        "Unable to resolve account. Please check the account number and bank.",
+    });
+  }
+});
 
 app.post("/fund-ticket", async (req, res) => {
   try {
@@ -5056,8 +5172,6 @@ app.post("/create-xpress-wallet", async (req, res) => {
   }
 });
 
-
-
 app.post("/create-xpress-tier2-wallet", async (req, res) => {
   try {
     const {
@@ -5369,7 +5483,6 @@ app.post("/create-xpress-tier2-wallet", async (req, res) => {
     });
   }
 });
-
 
 app.post("/create-xpress-tier3-wallet", async (req, res) => {
   try {
@@ -5703,7 +5816,6 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
     });
   }
 }); 
-
 
 
 // app.post('/xpress-customer-data', async (req, res) => {
