@@ -5876,9 +5876,13 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
 
 // server.js
 
+
+
+
 app.post('/xpress-customer-data', async (req, res) => {
   try {
-    const { customerId } = req.body;
+    // We now need userId so we know which Firestore document to update
+    const { customerId, userId } = req.body;
 
     if (!customerId) {
       return res.status(400).json({ success: false, message: 'Missing customerId' });
@@ -5893,6 +5897,7 @@ app.post('/xpress-customer-data', async (req, res) => {
           'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
           'Content-Type': 'application/json',
         },
+        timeout: 15000 // Don't let the request hang
       }
     );
 
@@ -5902,31 +5907,82 @@ app.post('/xpress-customer-data', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Wallet not found' });
     }
 
-    return res.status(200).json({
+    const walletData = {
+      id: wallet.id,
+      accountNumber: wallet.accountNumber,
+      accountName: wallet.accountName,
+      bankName: wallet.bankName,
+      bankCode: wallet.bankCode,
+      accountReference: wallet.accountReference,
+      availableBalance: Number(wallet.availableBalance || 0),
+      bookedBalance: Number(wallet.bookedBalance || 0),
+      currency: wallet.currency || 'NGN',
+      status: wallet.status,
+      customerId: wallet.customerId,
+      firstName: wallet.firstName,
+      lastName: wallet.lastName,
+      email: wallet.email,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
+    };
+
+    // ---------------------------------------------------
+    // 1. SEND RESPONSE TO FRONTEND INSTANTLY
+    // ---------------------------------------------------
+    res.status(200).json({
       success: true,
-      data: {
-        wallet: {
-          id: wallet.id,
-          accountNumber: wallet.accountNumber,
-          accountName: wallet.accountName,
-          bankName: wallet.bankName,
-          bankCode: wallet.bankCode,
-          accountReference: wallet.accountReference,
-          availableBalance: wallet.availableBalance || 0,
-          bookedBalance: wallet.bookedBalance || 0,
-          currency: wallet.currency || 'NGN',
-          status: wallet.status,
-          customerId: wallet.customerId,
-          firstName: wallet.firstName,
-          lastName: wallet.lastName,
-          email: wallet.email,
-          createdAt: wallet.createdAt,
-          updatedAt: wallet.updatedAt,
-        },
-      },
+      data: { wallet: walletData },
     });
+
+    // ---------------------------------------------------
+    // 2. SAVE TO DATABASE IN THE BACKGROUND
+    // ---------------------------------------------------
+    if (userId) {
+      db.collection("users")
+        .doc(userId)
+        .set(
+          {
+            xpress: {
+              availableBalance: walletData.availableBalance,
+              bookedBalance: walletData.bookedBalance,
+              lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+          },
+          { merge: true } // Merge true to not overwrite other xpress fields
+        )
+        .catch((dbErr) => console.error("Background DB save failed:", dbErr));
+    }
+
   } catch (error) {
     console.error('Xpress wallet data error:', error.response?.data || error.message);
+    
+    // ---------------------------------------------------
+    // 3. FALLBACK: IF XPRESS FAILS, READ FROM FIRESTORE
+    // ---------------------------------------------------
+    if (req.body.userId) {
+      try {
+        const userDoc = await db.collection("users").doc(req.body.userId).get();
+        const cachedData = userDoc.data()?.xpress;
+
+        if (cachedData) {
+          return res.status(200).json({
+            success: true,
+            isCached: true, // Tell frontend this is old data
+            data: {
+              wallet: {
+                customerId: req.body.customerId,
+                availableBalance: cachedData.availableBalance || 0,
+                bookedBalance: cachedData.bookedBalance || 0,
+                currency: "NGN",
+              }
+            },
+          });
+        }
+      } catch (fallbackErr) {
+        console.error("Fallback DB read failed:", fallbackErr);
+      }
+    }
+
     return res.status(error.response?.status || 500).json({
       success: false,
       message: error.response?.data?.message || error.message || 'Failed to fetch wallet data',
