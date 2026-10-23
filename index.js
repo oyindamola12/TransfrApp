@@ -1380,11 +1380,10 @@ app.post("/bank-withdrawal", async (req, res) => {
   }
 
   // =====================================================
-  // 2. REFERENCES
+  // 2. REFERENCES (Fixed collection name to "Cards")
   // =====================================================
   const userRef = db.collection("users").doc(userId);
-  const cardRef = userRef.collection("wallet").doc(cardId);
-
+  const cardRef = userRef.collection("Cards").doc(cardId); // 👈 FIXED HERE
   const reference = `wd-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
   const withdrawalRef = db.collection("withdrawal").doc(reference);
 
@@ -1447,7 +1446,8 @@ app.post("/bank-withdrawal", async (req, res) => {
           headers: {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 20000 // 👈 Added timeout
         }
       );
       xpressWallet = walletResponse.data?.wallet;
@@ -1481,7 +1481,7 @@ app.post("/bank-withdrawal", async (req, res) => {
     let transferData = null;
     try {
       const response = await axios.post(
-        `${process.env.XPRESS_BASE_URL}/transfer/bank/customer`, // customer-initiated transfer
+        `${process.env.XPRESS_BASE_URL}/transfer/bank/customer`, 
         {
           amount,
           sortCode: bankCode,
@@ -1500,7 +1500,8 @@ app.post("/bank-withdrawal", async (req, res) => {
           headers: {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 20000 // 👈 Added timeout
         }
       );
 
@@ -1559,7 +1560,8 @@ app.post("/bank-withdrawal", async (req, res) => {
           params: { customerId: xpressCustomerId },
           headers: {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`
-          }
+          },
+          timeout: 20000
         }
       );
       const freshWallet = freshWalletResponse.data?.wallet;
@@ -1570,12 +1572,13 @@ app.post("/bank-withdrawal", async (req, res) => {
       console.warn("Could not refresh balance after withdrawal:", refreshError.message);
     }
 
-    const oldBalance = Number(cardData.balance || 0);
+    // Use the Xpress balance before the transfer, not the stale Firestore balance
+    const oldBalance = xpressAvailableBalance; 
 
     // Firestore batch – log everything atomically
     const batch = db.batch();
 
-    // Update cached balance on user's wallet card
+    // (Optional) Update cached balance on user's wallet card if you still want it
     batch.set(cardRef, {
       balance: newXpressBalance,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -11423,9 +11426,7 @@ app.post("/health-scan", async (req, res) => {
 });
 
 
-app.get('/health', (req, res) => {    // 3. Health route
-  res.json({ status: 'ok' });
-});
+
 // =====================================================
 // IMPORTS (adjust for your setup)
 // =====================================================
