@@ -5817,68 +5817,6 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
   }
 }); 
 
-
-// app.post('/xpress-customer-data', async (req, res) => {
-//   try {
-//     const { customerId } = req.body;
-
-//     if (!customerId) {
-//       return res.status(400).json({ success: false, message: 'Missing customerId' });
-//     }
-
-//     // Call Xpress GET /customer/{customerId}
-//     const response = await axios.get(
-//       `${process.env.XPRESS_BASE_URL}/customer/${customerId}`,
-//       {
-//         headers: {
-//           'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-//         },
-//       }
-//     );
-
-//     // Extract customer and wallet data
-//     const customerData = response.data?.customer || {};
-//     const walletData = response.data?.wallet || {};
-
-//     // Combine relevant information
-//     const result = {
-//       success: true,
-//       data: {
-//         customerId: customerData.id,
-//         tier: customerData.tier,
-//         status: customerData.status,
-//         email: customerData.email,
-//         firstName: customerData.firstName,
-//         lastName: customerData.lastName,
-//         phoneNumber: customerData.phoneNumber,
-//         walletId: walletData.id,
-//         accountNumber: walletData.accountNumber,
-//         accountName: walletData.accountName,
-//         bankName: walletData.bankName,
-//         bankCode: walletData.bankCode,
-//         availableBalance: walletData.availableBalance || 0,
-//         bookedBalance: walletData.bookedBalance || 0,
-//         currency: walletData.currency || 'NGN',
-//         status: walletData.status || 'ACTIVE',
-//       }
-//     };
-
-//     return res.status(200).json(result);
-
-//   } catch (error) {
-//     console.error('Xpress customer data error:', error.response?.data || error.message);
-//     return res.status(error.response?.status || 500).json({
-//       success: false,
-//       message: error.response?.data?.message || error.message || 'Failed to fetch Xpress data',
-//     });
-//   }
-// });
-
-// server.js
-
-
-
-
 app.post('/xpress-customer-data', async (req, res) => {
   try {
     const { customerId, userId, cardId } = req.body;
@@ -7855,6 +7793,410 @@ app.post("/flutterwave-webhook", async (req, res) => {
 // });
 
 
+// app.post("/wallet-to-wallet", async (req, res) => {
+//   try {
+//     const {
+//       userId,
+//       cardId,
+//       receiverUserId,
+//       receiverCardId,
+//       amount,
+//       firstname,
+//       lastname,
+//       transactionNo,
+//       fcmToken,
+//       cardType
+//     } = req.body;
+
+//     const transferAmount = Number(amount);
+
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!userId || !cardId || !receiverUserId || !receiverCardId || !transferAmount || transferAmount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing or invalid transfer information"
+//       });
+//     }
+
+//     if (cardId === receiverCardId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "You cannot transfer to the same wallet"
+//       });
+//     }
+
+//     const reference =
+//       transactionNo ||
+//       `TRF-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+//     // =====================================================
+//     // 2. FIRESTORE REFERENCES
+//     // =====================================================
+//     const senderUserRef = db.collection("users").doc(userId);
+//     const receiverUserRef = db.collection("users").doc(receiverUserId);
+//     const senderCardRef = senderUserRef.collection("Cards").doc(cardId);
+//     const receiverCardRef = receiverUserRef.collection("Cards").doc(receiverCardId);
+//     const txnRef = db.collection("AllTransaction").doc(reference);
+
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction detected"
+//       });
+//     }
+
+//     // =====================================================
+//     // 4. FETCH USERS AND CARDS
+//     // =====================================================
+//     const [senderUserDoc, receiverUserDoc, senderCardDoc, receiverCardDoc] = await Promise.all([
+//       senderUserRef.get(),
+//       receiverUserRef.get(),
+//       senderCardRef.get(),
+//       receiverCardRef.get()
+//     ]);
+
+//     if (!senderUserDoc.exists || !receiverUserDoc.exists) {
+//       return res.status(404).json({ success: false, message: "User not found" });
+//     }
+//     if (!senderCardDoc.exists || !receiverCardDoc.exists) {
+//       return res.status(404).json({ success: false, message: "Card not found" });
+//     }
+
+//     const senderData = senderUserDoc.data();
+//     const receiverData = receiverUserDoc.data();
+//     const senderCardData = senderCardDoc.data();
+//     const receiverCardData = receiverCardDoc.data();
+
+//     // =====================================================
+//     // 5. RESOLVE XPRESS CUSTOMER IDs
+//     // =====================================================
+//     const senderCustomerId =
+//       senderCardData?.xpress?.customerId ||
+//       senderData?.xpress?.customerId;
+
+//     const receiverCustomerId =
+//       receiverCardData?.xpress?.customerId ||
+//       receiverData?.xpress?.customerId;
+
+//     if (!senderCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Sender does not have an Xpress wallet. Please create one first."
+//       });
+//     }
+
+//     if (!receiverCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Receiver does not have an Xpress wallet. They must create one first."
+//       });
+//     }
+
+//     // =====================================================
+//     // 6. CHECK SENDER BALANCE VIA XPRESS (SOURCE OF TRUTH)
+//     // =====================================================
+//     let senderWallet;
+//     try {
+//       const walletResponse = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: senderCustomerId },
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json'
+//           }
+//         }
+//       );
+//       senderWallet = walletResponse.data?.wallet;
+//     } catch (walletError) {
+//       console.error("XPRESS WALLET FETCH ERROR:", walletError.response?.data || walletError.message);
+//       return res.status(400).json({
+//         success: false,
+//         message: "Unable to verify sender's Xpress wallet"
+//       });
+//     }
+
+//     const senderAvailableBalance = Number(senderWallet?.availableBalance || 0);
+//     if (senderAvailableBalance < transferAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient balance",
+//         available: senderAvailableBalance
+//       });
+//     }
+
+//     // =====================================================
+//     // 7. CALL XPRESS WALLET-TO-WALLET TRANSFER
+//     // =====================================================
+//     // POST /transfer/wallet  { fromCustomerId, toCustomerId, amount }
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/transfer/wallet`,
+//         {
+//           amount: transferAmount,
+//           fromCustomerId: senderCustomerId,
+//           toCustomerId: receiverCustomerId
+//         },
+//         {
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json'
+//           }
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error("XPRESS WALLET-TO-WALLET ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
+
+//       // Log the failed attempt for audit
+//       await db.collection("AllTransaction").doc(reference).set({
+//         type: "WalletToWallet",
+//         provider: "xpress",
+//         amount: transferAmount,
+//         status: "failed",
+//         failureReason: xpressError.response?.data?.message || xpressError.message,
+//         sender: { userId, cardId, customerId: senderCustomerId },
+//         receiver: { userId: receiverUserId, cardId: receiverCardId, customerId: receiverCustomerId },
+//         reference,
+//         paymentMethod: "xpress",
+//         date: admin.firestore.FieldValue.serverTimestamp()
+//       });
+
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressError.response?.data?.message || "Wallet transfer failed",
+//         xpress: xpressError.response?.data || null
+//       });
+//     }
+
+//     const xpressData = xpressResponse.data;
+
+//     // Verify success
+//     if (!xpressData || xpressData.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressData?.message || "Wallet transfer failed",
+//         xpress: xpressData
+//       });
+//     }
+
+//     const xpressReference =
+//       xpressData?.data?.reference ||
+//       xpressData?.reference ||
+//       xpressData?.transactionReference ||
+//       reference;
+
+//     console.log("✅ Xpress wallet-to-wallet success:", xpressData);
+
+//     // =====================================================
+//     // 8. FETCH FRESH BALANCES (for logging only)
+//     // =====================================================
+//     let newSenderBalance = senderAvailableBalance - transferAmount;
+//     let newReceiverBalance = null;
+
+//     try {
+//       const [freshSenderRes, freshReceiverRes] = await Promise.all([
+//         axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
+//           params: { customerId: senderCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` }
+//         }),
+//         axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
+//           params: { customerId: receiverCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` }
+//         })
+//       ]);
+//       if (freshSenderRes.data?.wallet?.availableBalance !== undefined) {
+//         newSenderBalance = Number(freshSenderRes.data.wallet.availableBalance);
+//       }
+//       if (freshReceiverRes.data?.wallet?.availableBalance !== undefined) {
+//         newReceiverBalance = Number(freshReceiverRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn("Could not refresh balances after transfer:", refreshError.message);
+//     }
+
+//     // =====================================================
+//     // 9. LOG TRANSACTIONS IN FIRESTORE
+//     // =====================================================
+//     const batch = db.batch();
+
+//     // Sender's transaction log
+//     batch.set(
+//       senderUserRef.collection("Transactions").doc(reference),
+//       {
+//         type: "WalletTransferSent",
+//         provider: "xpress",
+//         status: "success",
+//         amount: transferAmount,
+//         balanceAfter: newSenderBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: cardId,
+//         cardType: senderCardData.cardType || cardType || "wallet",
+//         firstname: firstname || senderData.firstName || senderData.firstname || "",
+//         lastname: lastname || senderData.lastName || senderData.lastname || "",
+//         senderUserId: userId,
+//         senderCustomerId,
+//         receiverUserId,
+//         receiverCardId,
+//         receiverCustomerId,
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         paymentMethod: "xpress",
+//         date: admin.firestore.FieldValue.serverTimestamp()
+//       }
+//     );
+
+//     // Receiver's transaction log
+//     batch.set(
+//       receiverUserRef.collection("Transactions").doc(reference),
+//       {
+//         type: "WalletTransferReceived",
+//         provider: "xpress",
+//         status: "success",
+//         amount: transferAmount,
+//         balanceAfter: newReceiverBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: receiverCardId,
+//         cardType: receiverCardData.cardType || "wallet",
+//         firstname: senderData.firstName || senderData.firstname || firstname || "",
+//         lastname: senderData.lastName || senderData.lastname || lastname || "",
+//         senderUserId: userId,
+//         senderCustomerId,
+//         receiverUserId,
+//         receiverCardId,
+//         receiverCustomerId,
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         paymentMethod: "xpress",
+//         date: admin.firestore.FieldValue.serverTimestamp()
+//       }
+//     );
+
+//     // Global transaction log
+//     batch.set(txnRef, {
+//       type: "WalletToWallet",
+//       provider: "xpress",
+//       amount: transferAmount,
+//       transactionNo: reference,
+//       reference,
+//       xpressReference,
+//       paymentMethod: "xpress",
+//       status: "success",
+//       sender: {
+//         userId,
+//         cardId,
+//         customerId: senderCustomerId,
+//         firstname: senderData.firstName || senderData.firstname || firstname || "",
+//         lastname: senderData.lastName || senderData.lastname || lastname || ""
+//       },
+//       receiver: {
+//         userId: receiverUserId,
+//         cardId: receiverCardId,
+//         customerId: receiverCustomerId,
+//         firstname: receiverData.firstName || receiverData.firstname || "",
+//         lastname: receiverData.lastName || receiverData.lastname || ""
+//       },
+//       senderBalanceAfter: newSenderBalance,
+//       receiverBalanceAfter: newReceiverBalance,
+//       xpressData,
+//       date: admin.firestore.FieldValue.serverTimestamp()
+//     });
+
+//     // Ledger entry (audit)
+//     batch.set(
+//       db.collection("TransfrLedger").doc(reference),
+//       {
+//         reference,
+//         type: "xpress_wallet_to_wallet",
+//         provider: "xpress",
+//         amount: transferAmount,
+//         senderUserId: userId,
+//         senderCardId: cardId,
+//         senderCustomerId,
+//         receiverUserId,
+//         receiverCardId,
+//         receiverCustomerId,
+//         senderBalanceAfter: newSenderBalance,
+//         receiverBalanceAfter: newReceiverBalance,
+//         xpressReference,
+//         status: "success",
+//         createdAt: admin.firestore.FieldValue.serverTimestamp()
+//       }
+//     );
+
+//     // Notification flags
+//     batch.set(senderUserRef, { notification: true, inappnotification: true }, { merge: true });
+//     batch.set(receiverUserRef, { notification: true, inappnotification: true }, { merge: true });
+
+//     await batch.commit();
+
+//     // =====================================================
+//     // 10. PUSH NOTIFICATION TO RECEIVER
+//     // =====================================================
+//     const receiverToken = receiverData?.fcm;
+//     if (receiverToken) {
+//       try {
+//         await messaging.send({
+//           token: receiverToken,
+//           notification: {
+//             title: "Money Received 💰",
+//             body: `₦${transferAmount.toLocaleString()} credited to your wallet`
+//           },
+//           data: {
+//             type: "receive",
+//             transactionNo: reference,
+//             amount: transferAmount.toString()
+//           }
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError);
+//       }
+//     }
+
+//     // =====================================================
+//     // 11. RESPONSE
+//     // =====================================================
+//     return res.json({
+//       success: true,
+//       message: "Transfer successful",
+//       data: {
+//         reference,
+//         xpressReference,
+//         amount: transferAmount,
+//         senderUserId: userId,
+//         senderCustomerId,
+//         receiverUserId,
+//         receiverCustomerId,
+//         senderCardId: cardId,
+//         receiverCardId,
+//         senderBalanceAfter: newSenderBalance,
+//         receiverBalanceAfter: newReceiverBalance,
+//         status: "success",
+//         transferType: "xpress_wallet_to_wallet"
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error("Wallet-to-Wallet Error:", error.response?.data || error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Internal server error"
+//     });
+//   }
+// });
+
+
+
 app.post("/wallet-to-wallet", async (req, res) => {
   try {
     const {
@@ -7866,56 +8208,37 @@ app.post("/wallet-to-wallet", async (req, res) => {
       firstname,
       lastname,
       transactionNo,
-      fcmToken,
       cardType
     } = req.body;
 
     const transferAmount = Number(amount);
 
     // =====================================================
-    // 1. VALIDATION
+    // 1. VALIDATION & REFERENCES
     // =====================================================
     if (!userId || !cardId || !receiverUserId || !receiverCardId || !transferAmount || transferAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing or invalid transfer information"
-      });
+      return res.status(400).json({ success: false, message: "Missing or invalid transfer information" });
     }
 
     if (cardId === receiverCardId) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot transfer to the same wallet"
-      });
+      return res.status(400).json({ success: false, message: "You cannot transfer to the same wallet" });
     }
 
-    const reference =
-      transactionNo ||
-      `TRF-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const reference = transactionNo || `TRF-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
-    // =====================================================
-    // 2. FIRESTORE REFERENCES
-    // =====================================================
     const senderUserRef = db.collection("users").doc(userId);
     const receiverUserRef = db.collection("users").doc(receiverUserId);
     const senderCardRef = senderUserRef.collection("Cards").doc(cardId);
     const receiverCardRef = receiverUserRef.collection("Cards").doc(receiverCardId);
     const txnRef = db.collection("AllTransaction").doc(reference);
 
-    // =====================================================
-    // 3. DUPLICATE CHECK
-    // =====================================================
+    // Duplicate check
     const existingTxn = await txnRef.get();
     if (existingTxn.exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate transaction detected"
-      });
+      return res.status(400).json({ success: false, message: "Duplicate transaction detected" });
     }
 
-    // =====================================================
-    // 4. FETCH USERS AND CARDS
-    // =====================================================
+    // Fetch Data
     const [senderUserDoc, receiverUserDoc, senderCardDoc, receiverCardDoc] = await Promise.all([
       senderUserRef.get(),
       receiverUserRef.get(),
@@ -7923,11 +8246,8 @@ app.post("/wallet-to-wallet", async (req, res) => {
       receiverCardRef.get()
     ]);
 
-    if (!senderUserDoc.exists || !receiverUserDoc.exists) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-    if (!senderCardDoc.exists || !receiverCardDoc.exists) {
-      return res.status(404).json({ success: false, message: "Card not found" });
+    if (!senderUserDoc.exists || !receiverUserDoc.exists || !senderCardDoc.exists || !receiverCardDoc.exists) {
+      return res.status(404).json({ success: false, message: "User or Card not found" });
     }
 
     const senderData = senderUserDoc.data();
@@ -7936,52 +8256,164 @@ app.post("/wallet-to-wallet", async (req, res) => {
     const receiverCardData = receiverCardDoc.data();
 
     // =====================================================
-    // 5. RESOLVE XPRESS CUSTOMER IDs
+    // 2. RESOLVE CUSTOMER IDs & NUBAN STATUS
     // =====================================================
-    const senderCustomerId =
-      senderCardData?.xpress?.customerId ||
-      senderData?.xpress?.customerId;
+    const senderCustomerId = senderCardData?.xpress?.customerId || senderData?.xpress?.customerId;
+    const receiverCustomerId = receiverCardData?.xpress?.customerId || receiverData?.xpress?.customerId;
+    
+    const senderIsNuban = !!senderCustomerId;
+    const receiverIsNuban = !!receiverCustomerId || receiverData?.nubanEnabled === true;
 
-    const receiverCustomerId =
-      receiverCardData?.xpress?.customerId ||
-      receiverData?.xpress?.customerId;
+    // =====================================================
+    // 3. OPTION A: BOTH USERS NOT NUBAN (Pure Firestore Transfer)
+    // =====================================================
+    if (!senderIsNuban && !receiverIsNuban) {
+      const senderFirestoreBalance = Number(senderCardData.balance || 0);
+      
+      if (senderFirestoreBalance < transferAmount) {
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient balance",
+          available: senderFirestoreBalance
+        });
+      }
 
-    if (!senderCustomerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Sender does not have an Xpress wallet. Please create one first."
+      let newSenderBalance = 0;
+      let newReceiverBalance = 0;
+
+      await db.runTransaction(async (tx) => {
+        const freshSenderDoc = await tx.get(senderCardRef);
+        const freshReceiverDoc = await tx.get(receiverCardRef);
+
+        const latestSenderBalance = Number(freshSenderDoc.data().balance || 0);
+        const latestReceiverBalance = Number(freshReceiverDoc.data().balance || 0);
+
+        if (latestSenderBalance < transferAmount) {
+          throw new Error("Insufficient balance");
+        }
+
+        newSenderBalance = latestSenderBalance - transferAmount;
+        newReceiverBalance = latestReceiverBalance + transferAmount;
+
+        // Update balances
+        tx.update(senderCardRef, {
+          balance: newSenderBalance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        tx.update(receiverCardRef, {
+          balance: newReceiverBalance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Notification flags
+        tx.set(senderUserRef, { notification: true }, { merge: true });
+        tx.set(receiverUserRef, { notification: true, inappnotification: true }, { merge: true });
+
+        // Sender transaction
+        tx.set(senderUserRef.collection("Transactions").doc(reference), {
+          type: "WalletTransferSent",
+          provider: "firestore",
+          status: "success",
+          amount: transferAmount,
+          balanceAfter: newSenderBalance,
+          balanceType: "firestore_wallet",
+          cardNumber: cardId,
+          senderUserId: userId,
+          receiverUserId,
+          transactionNo: reference,
+          transferType: "firestore_to_firestore",
+          date: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Receiver transaction
+        tx.set(receiverUserRef.collection("Transactions").doc(reference), {
+          type: "WalletTransferReceived",
+          provider: "firestore",
+          status: "success",
+          amount: transferAmount,
+          balanceAfter: newReceiverBalance,
+          balanceType: "firestore_wallet",
+          cardNumber: receiverCardId,
+          senderUserId: userId,
+          receiverUserId,
+          transactionNo: reference,
+          transferType: "firestore_to_firestore",
+          date: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Global transaction log
+        tx.set(txnRef, {
+          type: "WalletToWallet",
+          provider: "firestore",
+          amount: transferAmount,
+          transactionNo: reference,
+          reference,
+          status: "success",
+          transferType: "firestore_to_firestore",
+          sender: { userId, cardId },
+          receiver: { userId: receiverUserId, cardId: receiverCardId },
+          senderBalanceAfter: newSenderBalance,
+          receiverBalanceAfter: newReceiverBalance,
+          date: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      // Push notification
+      const receiverToken = receiverData?.fcm;
+      if (receiverToken) {
+        try {
+          await messaging.send({
+            token: receiverToken,
+            notification: {
+              title: "Money Received 💰",
+              body: `₦${transferAmount.toLocaleString()} credited to your wallet`
+            },
+            data: { type: "receive", transactionNo: reference, amount: transferAmount.toString() }
+          });
+        } catch (pushError) {
+          console.error("Push notification failed:", pushError);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "Transfer successful",
+        data: {
+          reference,
+          amount: transferAmount,
+          transferType: "firestore_to_firestore",
+          senderBalanceAfter: newSenderBalance,
+          receiverBalanceAfter: newReceiverBalance,
+          status: "success"
+        }
       });
     }
 
-    if (!receiverCustomerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Receiver does not have an Xpress wallet. They must create one first."
+    // =====================================================
+    // 4. OPTION B: SENDER IS NUBAN (Xpress Transfer)
+    // =====================================================
+    if (!senderIsNuban) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Sender does not have an Xpress wallet, but receiver does. Please upgrade your wallet to transfer to this user." 
       });
     }
 
-    // =====================================================
-    // 6. CHECK SENDER BALANCE VIA XPRESS (SOURCE OF TRUTH)
-    // =====================================================
+    // Check Sender Balance via Xpress
     let senderWallet;
     try {
       const walletResponse = await axios.get(
         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
         {
           params: { customerId: senderCustomerId },
-          headers: {
-            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          }
+          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000
         }
       );
       senderWallet = walletResponse.data?.wallet;
     } catch (walletError) {
       console.error("XPRESS WALLET FETCH ERROR:", walletError.response?.data || walletError.message);
-      return res.status(400).json({
-        success: false,
-        message: "Unable to verify sender's Xpress wallet"
-      });
+      return res.status(400).json({ success: false, message: "Unable to verify sender's Xpress wallet" });
     }
 
     const senderAvailableBalance = Number(senderWallet?.availableBalance || 0);
@@ -7993,158 +8425,136 @@ app.post("/wallet-to-wallet", async (req, res) => {
       });
     }
 
-    // =====================================================
-    // 7. CALL XPRESS WALLET-TO-WALLET TRANSFER
-    // =====================================================
-    // POST /transfer/wallet  { fromCustomerId, toCustomerId, amount }
+    // Execute Xpress Transfer
     let xpressResponse;
-    try {
-      xpressResponse = await axios.post(
-        `${process.env.XPRESS_BASE_URL}/transfer/wallet`,
-        {
-          amount: transferAmount,
-          fromCustomerId: senderCustomerId,
-          toCustomerId: receiverCustomerId
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-    } catch (xpressError) {
-      console.error("XPRESS WALLET-TO-WALLET ERROR:",
-        xpressError.response?.data || xpressError.message
-      );
+    let transferType = "";
 
-      // Log the failed attempt for audit
-      await db.collection("AllTransaction").doc(reference).set({
+    try {
+      if (receiverIsNuban) {
+        // Direct Xpress to Xpress
+        transferType = "xpress_to_xpress";
+        xpressResponse = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/transfer/wallet`,
+          {
+            amount: transferAmount,
+            fromCustomerId: senderCustomerId,
+            toCustomerId: receiverCustomerId
+          },
+          {
+            headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+            timeout: 20000
+          }
+        );
+      } else {
+        // Xpress to Transfr Global Merchant Account
+        transferType = "xpress_to_transfr_merchant";
+        xpressResponse = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/transfer/bank/customer`,
+          {
+            amount: transferAmount,
+            sortCode: "100040",
+            accountNumber: "8801689068",
+            accountName: "Transfr Global Resources Limited",
+            narration: `Internal Wallet Transfer for user ${receiverUserId}`,
+            customerId: senderCustomerId,
+            metadata: {
+              firebaseUserId: userId,
+              receiverUserId,
+              reference,
+              purpose: "internal_wallet_transfer"
+            }
+          },
+          {
+            headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+            timeout: 20000
+          }
+        );
+      }
+    } catch (xpressError) {
+      console.error(`XPRESS ${transferType} ERROR:`, xpressError.response?.data || xpressError.message);
+      
+      await txnRef.set({
         type: "WalletToWallet",
         provider: "xpress",
         amount: transferAmount,
         status: "failed",
         failureReason: xpressError.response?.data?.message || xpressError.message,
         sender: { userId, cardId, customerId: senderCustomerId },
-        receiver: { userId: receiverUserId, cardId: receiverCardId, customerId: receiverCustomerId },
+        receiver: { userId: receiverUserId, cardId: receiverCardId, customerId: receiverCustomerId || null },
+        transferType,
         reference,
-        paymentMethod: "xpress",
         date: admin.firestore.FieldValue.serverTimestamp()
       });
 
       return res.status(400).json({
         success: false,
         message: xpressError.response?.data?.message || "Wallet transfer failed",
-        xpress: xpressError.response?.data || null
       });
     }
 
     const xpressData = xpressResponse.data;
-
-    // Verify success
     if (!xpressData || xpressData.status === false) {
-      return res.status(400).json({
-        success: false,
-        message: xpressData?.message || "Wallet transfer failed",
-        xpress: xpressData
+      return res.status(400).json({ success: false, message: xpressData?.message || "Wallet transfer failed" });
+    }
+
+    const xpressReference = 
+      xpressData?.reference || 
+      xpressData?.transfer?.reference || 
+      xpressData?.data?.reference || 
+      xpressData?.transactionReference || 
+      reference;
+
+    // Calculate new balances
+    let newSenderBalance = senderAvailableBalance - transferAmount;
+    let newReceiverFirestoreBalance = null;
+    
+    if (!receiverIsNuban) {
+      const currentReceiverBalance = Number(receiverCardData.balance || 0);
+      newReceiverFirestoreBalance = currentReceiverBalance + transferAmount;
+    }
+
+    // Log and update Firestore
+    const batch = db.batch();
+
+    batch.set(senderUserRef.collection("Transactions").doc(reference), {
+      type: "WalletTransferSent",
+      provider: "xpress",
+      status: "success",
+      amount: transferAmount,
+      balanceAfter: newSenderBalance,
+      balanceType: "xpress_wallet",
+      cardNumber: cardId,
+      senderUserId: userId,
+      receiverUserId,
+      transactionNo: reference,
+      xpressReference,
+      transferType,
+      date: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    batch.set(receiverUserRef.collection("Transactions").doc(reference), {
+      type: "WalletTransferReceived",
+      provider: "xpress",
+      status: "success",
+      amount: transferAmount,
+      balanceAfter: receiverIsNuban ? null : newReceiverFirestoreBalance,
+      balanceType: receiverIsNuban ? "xpress_wallet" : "firestore_wallet",
+      cardNumber: receiverCardId,
+      senderUserId: userId,
+      receiverUserId,
+      transactionNo: reference,
+      xpressReference,
+      transferType,
+      date: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    if (!receiverIsNuban) {
+      batch.update(receiverCardRef, {
+        balance: newReceiverFirestoreBalance,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
     }
 
-    const xpressReference =
-      xpressData?.data?.reference ||
-      xpressData?.reference ||
-      xpressData?.transactionReference ||
-      reference;
-
-    console.log("✅ Xpress wallet-to-wallet success:", xpressData);
-
-    // =====================================================
-    // 8. FETCH FRESH BALANCES (for logging only)
-    // =====================================================
-    let newSenderBalance = senderAvailableBalance - transferAmount;
-    let newReceiverBalance = null;
-
-    try {
-      const [freshSenderRes, freshReceiverRes] = await Promise.all([
-        axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
-          params: { customerId: senderCustomerId },
-          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` }
-        }),
-        axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
-          params: { customerId: receiverCustomerId },
-          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` }
-        })
-      ]);
-      if (freshSenderRes.data?.wallet?.availableBalance !== undefined) {
-        newSenderBalance = Number(freshSenderRes.data.wallet.availableBalance);
-      }
-      if (freshReceiverRes.data?.wallet?.availableBalance !== undefined) {
-        newReceiverBalance = Number(freshReceiverRes.data.wallet.availableBalance);
-      }
-    } catch (refreshError) {
-      console.warn("Could not refresh balances after transfer:", refreshError.message);
-    }
-
-    // =====================================================
-    // 9. LOG TRANSACTIONS IN FIRESTORE
-    // =====================================================
-    const batch = db.batch();
-
-    // Sender's transaction log
-    batch.set(
-      senderUserRef.collection("Transactions").doc(reference),
-      {
-        type: "WalletTransferSent",
-        provider: "xpress",
-        status: "success",
-        amount: transferAmount,
-        balanceAfter: newSenderBalance,
-        balanceType: "xpress_wallet",
-        cardNumber: cardId,
-        cardType: senderCardData.cardType || cardType || "wallet",
-        firstname: firstname || senderData.firstName || senderData.firstname || "",
-        lastname: lastname || senderData.lastName || senderData.lastname || "",
-        senderUserId: userId,
-        senderCustomerId,
-        receiverUserId,
-        receiverCardId,
-        receiverCustomerId,
-        transactionNo: reference,
-        reference,
-        xpressReference,
-        paymentMethod: "xpress",
-        date: admin.firestore.FieldValue.serverTimestamp()
-      }
-    );
-
-    // Receiver's transaction log
-    batch.set(
-      receiverUserRef.collection("Transactions").doc(reference),
-      {
-        type: "WalletTransferReceived",
-        provider: "xpress",
-        status: "success",
-        amount: transferAmount,
-        balanceAfter: newReceiverBalance,
-        balanceType: "xpress_wallet",
-        cardNumber: receiverCardId,
-        cardType: receiverCardData.cardType || "wallet",
-        firstname: senderData.firstName || senderData.firstname || firstname || "",
-        lastname: senderData.lastName || senderData.lastname || lastname || "",
-        senderUserId: userId,
-        senderCustomerId,
-        receiverUserId,
-        receiverCardId,
-        receiverCustomerId,
-        transactionNo: reference,
-        reference,
-        xpressReference,
-        paymentMethod: "xpress",
-        date: admin.firestore.FieldValue.serverTimestamp()
-      }
-    );
-
-    // Global transaction log
     batch.set(txnRef, {
       type: "WalletToWallet",
       provider: "xpress",
@@ -8152,59 +8562,22 @@ app.post("/wallet-to-wallet", async (req, res) => {
       transactionNo: reference,
       reference,
       xpressReference,
-      paymentMethod: "xpress",
       status: "success",
-      sender: {
-        userId,
-        cardId,
-        customerId: senderCustomerId,
-        firstname: senderData.firstName || senderData.firstname || firstname || "",
-        lastname: senderData.lastName || senderData.lastname || lastname || ""
-      },
-      receiver: {
-        userId: receiverUserId,
-        cardId: receiverCardId,
-        customerId: receiverCustomerId,
-        firstname: receiverData.firstName || receiverData.firstname || "",
-        lastname: receiverData.lastName || receiverData.lastname || ""
-      },
+      transferType,
+      sender: { userId, cardId, customerId: senderCustomerId },
+      receiver: { userId: receiverUserId, cardId: receiverCardId, customerId: receiverCustomerId || null },
       senderBalanceAfter: newSenderBalance,
-      receiverBalanceAfter: newReceiverBalance,
+      receiverBalanceAfter: receiverIsNuban ? null : newReceiverFirestoreBalance,
       xpressData,
       date: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Ledger entry (audit)
-    batch.set(
-      db.collection("TransfrLedger").doc(reference),
-      {
-        reference,
-        type: "xpress_wallet_to_wallet",
-        provider: "xpress",
-        amount: transferAmount,
-        senderUserId: userId,
-        senderCardId: cardId,
-        senderCustomerId,
-        receiverUserId,
-        receiverCardId,
-        receiverCustomerId,
-        senderBalanceAfter: newSenderBalance,
-        receiverBalanceAfter: newReceiverBalance,
-        xpressReference,
-        status: "success",
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      }
-    );
-
-    // Notification flags
-    batch.set(senderUserRef, { notification: true, inappnotification: true }, { merge: true });
+    batch.set(senderUserRef, { notification: true }, { merge: true });
     batch.set(receiverUserRef, { notification: true, inappnotification: true }, { merge: true });
 
     await batch.commit();
 
-    // =====================================================
-    // 10. PUSH NOTIFICATION TO RECEIVER
-    // =====================================================
+    // Push notification
     const receiverToken = receiverData?.fcm;
     if (receiverToken) {
       try {
@@ -8214,20 +8587,13 @@ app.post("/wallet-to-wallet", async (req, res) => {
             title: "Money Received 💰",
             body: `₦${transferAmount.toLocaleString()} credited to your wallet`
           },
-          data: {
-            type: "receive",
-            transactionNo: reference,
-            amount: transferAmount.toString()
-          }
+          data: { type: "receive", transactionNo: reference, amount: transferAmount.toString() }
         });
       } catch (pushError) {
         console.error("Push notification failed:", pushError);
       }
     }
 
-    // =====================================================
-    // 11. RESPONSE
-    // =====================================================
     return res.json({
       success: true,
       message: "Transfer successful",
@@ -8235,16 +8601,10 @@ app.post("/wallet-to-wallet", async (req, res) => {
         reference,
         xpressReference,
         amount: transferAmount,
-        senderUserId: userId,
-        senderCustomerId,
-        receiverUserId,
-        receiverCustomerId,
-        senderCardId: cardId,
-        receiverCardId,
+        transferType,
         senderBalanceAfter: newSenderBalance,
-        receiverBalanceAfter: newReceiverBalance,
-        status: "success",
-        transferType: "xpress_wallet_to_wallet"
+        receiverBalanceAfter: receiverIsNuban ? null : newReceiverFirestoreBalance,
+        status: "success"
       }
     });
 
@@ -8256,411 +8616,410 @@ app.post("/wallet-to-wallet", async (req, res) => {
     });
   }
 });
+// app.post("/wallet-to-ticket", async (req, res) => {
+//   try {
+//     const {
+//       userId,
+//       walletCardId,
+//       ticketId,
+//       amount,
+//       firstname,
+//       lastname,
+//       transactionNo,
+//       fcmToken
+//     } = req.body;
 
-app.post("/wallet-to-ticket", async (req, res) => {
-  try {
-    const {
-      userId,
-      walletCardId,
-      ticketId,
-      amount,
-      firstname,
-      lastname,
-      transactionNo,
-      fcmToken
-    } = req.body;
+//     const fundAmount = Number(amount);
 
-    const fundAmount = Number(amount);
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!userId || !walletCardId || !ticketId || !fundAmount || fundAmount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing or invalid transfer information"
+//       });
+//     }
 
-    // =====================================================
-    // 1. VALIDATION
-    // =====================================================
-    if (!userId || !walletCardId || !ticketId || !fundAmount || fundAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing or invalid transfer information"
-      });
-    }
+//     const reference =
+//       transactionNo ||
+//       `TKT-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
-    const reference =
-      transactionNo ||
-      `TKT-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+//     // =====================================================
+//     // 2. FIRESTORE REFERENCES
+//     // =====================================================
+//     const userRef = db.collection("users").doc(userId);
+//     const walletCardRef = userRef.collection("Cards").doc(walletCardId);
+//     const ticketRef = userRef.collection("tickets").doc(ticketId);
+//     const globalTicketRef = db.collection("tickets").doc(ticketId);
+//     const txnRef = db.collection("AllTransaction").doc(reference);
 
-    // =====================================================
-    // 2. FIRESTORE REFERENCES
-    // =====================================================
-    const userRef = db.collection("users").doc(userId);
-    const walletCardRef = userRef.collection("Cards").doc(walletCardId);
-    const ticketRef = userRef.collection("tickets").doc(ticketId);
-    const globalTicketRef = db.collection("tickets").doc(ticketId);
-    const txnRef = db.collection("AllTransaction").doc(reference);
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction detected"
+//       });
+//     }
 
-    // =====================================================
-    // 3. DUPLICATE CHECK
-    // =====================================================
-    const existingTxn = await txnRef.get();
-    if (existingTxn.exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate transaction detected"
-      });
-    }
+//     // =====================================================
+//     // 4. FETCH USER + WALLET + TICKET
+//     // =====================================================
+//     const [userDoc, walletDoc, ticketDoc] = await Promise.all([
+//       userRef.get(),
+//       walletCardRef.get(),
+//       ticketRef.get()
+//     ]);
 
-    // =====================================================
-    // 4. FETCH USER + WALLET + TICKET
-    // =====================================================
-    const [userDoc, walletDoc, ticketDoc] = await Promise.all([
-      userRef.get(),
-      walletCardRef.get(),
-      ticketRef.get()
-    ]);
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ success: false, message: "User not found" });
+//     }
+//     if (!walletDoc.exists) {
+//       return res.status(404).json({ success: false, message: "Wallet not found" });
+//     }
+//     if (!ticketDoc.exists) {
+//       return res.status(404).json({ success: false, message: "Ticket not found" });
+//     }
 
-    if (!userDoc.exists) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-    if (!walletDoc.exists) {
-      return res.status(404).json({ success: false, message: "Wallet not found" });
-    }
-    if (!ticketDoc.exists) {
-      return res.status(404).json({ success: false, message: "Ticket not found" });
-    }
+//     const userData = userDoc.data();
+//     const walletData = walletDoc.data();
+//     const ticketData = ticketDoc.data();
 
-    const userData = userDoc.data();
-    const walletData = walletDoc.data();
-    const ticketData = ticketDoc.data();
+//     // =====================================================
+//     // 5. RESOLVE XPRESS CUSTOMER ID
+//     // =====================================================
+//     const xpressCustomerId =
+//       walletData?.xpress?.customerId ||
+//       userData?.xpress?.customerId;
 
-    // =====================================================
-    // 5. RESOLVE XPRESS CUSTOMER ID
-    // =====================================================
-    const xpressCustomerId =
-      walletData?.xpress?.customerId ||
-      userData?.xpress?.customerId;
+//     if (!xpressCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "User does not have an Xpress wallet. Please create one first."
+//       });
+//     }
 
-    if (!xpressCustomerId) {
-      return res.status(400).json({
-        success: false,
-        message: "User does not have an Xpress wallet. Please create one first."
-      });
-    }
+//     // =====================================================
+//     // 6. VERIFY BALANCE VIA XPRESS (SOURCE OF TRUTH)
+//     // =====================================================
+//     let senderWallet;
+//     try {
+//       const walletResponse = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: xpressCustomerId },
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json'
+//           }
+//         }
+//       );
+//       senderWallet = walletResponse.data?.wallet;
+//     } catch (walletError) {
+//       console.error("XPRESS WALLET FETCH ERROR:", walletError.response?.data || walletError.message);
+//       return res.status(400).json({
+//         success: false,
+//         message: "Unable to verify Xpress wallet balance"
+//       });
+//     }
 
-    // =====================================================
-    // 6. VERIFY BALANCE VIA XPRESS (SOURCE OF TRUTH)
-    // =====================================================
-    let senderWallet;
-    try {
-      const walletResponse = await axios.get(
-        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
-        {
-          params: { customerId: xpressCustomerId },
-          headers: {
-            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      senderWallet = walletResponse.data?.wallet;
-    } catch (walletError) {
-      console.error("XPRESS WALLET FETCH ERROR:", walletError.response?.data || walletError.message);
-      return res.status(400).json({
-        success: false,
-        message: "Unable to verify Xpress wallet balance"
-      });
-    }
+//     const availableBalance = Number(senderWallet?.availableBalance || 0);
+//     if (availableBalance < fundAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient balance",
+//         available: availableBalance
+//       });
+//     }
 
-    const availableBalance = Number(senderWallet?.availableBalance || 0);
-    if (availableBalance < fundAmount) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient balance",
-        available: availableBalance
-      });
-    }
+//     // =====================================================
+//     // 7. DEBIT XPRESS WALLET (money moves to platform)
+//     // =====================================================
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/wallet/debit`,
+//         {
+//           amount: fundAmount,
+//           reference,
+//           customerId: xpressCustomerId,
+//           metadata: {
+//             firebaseUserId: userId,
+//             walletCardId,
+//             ticketId,
+//             purpose: "ticket_funding",
+//             source: "transfr_app"
+//           }
+//         },
+//         {
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json'
+//           }
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error("XPRESS DEBIT ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
 
-    // =====================================================
-    // 7. DEBIT XPRESS WALLET (money moves to platform)
-    // =====================================================
-    let xpressResponse;
-    try {
-      xpressResponse = await axios.post(
-        `${process.env.XPRESS_BASE_URL}/wallet/debit`,
-        {
-          amount: fundAmount,
-          reference,
-          customerId: xpressCustomerId,
-          metadata: {
-            firebaseUserId: userId,
-            walletCardId,
-            ticketId,
-            purpose: "ticket_funding",
-            source: "transfr_app"
-          }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-    } catch (xpressError) {
-      console.error("XPRESS DEBIT ERROR:",
-        xpressError.response?.data || xpressError.message
-      );
+//       // Log failed attempt for audit
+//       await db.collection("AllTransaction").doc(reference).set({
+//         type: "WalletToTicket",
+//         provider: "xpress",
+//         amount: fundAmount,
+//         status: "failed",
+//         failureReason: xpressError.response?.data?.message || xpressError.message,
+//         sender: { userId, walletCardId, customerId: xpressCustomerId },
+//         receiver: { userId, ticketId, type: "ticket" },
+//         reference,
+//         paymentMethod: "xpress",
+//         date: admin.firestore.FieldValue.serverTimestamp()
+//       });
 
-      // Log failed attempt for audit
-      await db.collection("AllTransaction").doc(reference).set({
-        type: "WalletToTicket",
-        provider: "xpress",
-        amount: fundAmount,
-        status: "failed",
-        failureReason: xpressError.response?.data?.message || xpressError.message,
-        sender: { userId, walletCardId, customerId: xpressCustomerId },
-        receiver: { userId, ticketId, type: "ticket" },
-        reference,
-        paymentMethod: "xpress",
-        date: admin.firestore.FieldValue.serverTimestamp()
-      });
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressError.response?.data?.message || "Wallet debit failed",
+//         xpress: xpressError.response?.data || null
+//       });
+//     }
 
-      return res.status(400).json({
-        success: false,
-        message: xpressError.response?.data?.message || "Wallet debit failed",
-        xpress: xpressError.response?.data || null
-      });
-    }
+//     // Verify Xpress success
+//     if (!xpressResponse.data || xpressResponse.data.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressResponse.data?.message || "Wallet debit failed",
+//         xpress: xpressResponse.data
+//       });
+//     }
 
-    // Verify Xpress success
-    if (!xpressResponse.data || xpressResponse.data.status === false) {
-      return res.status(400).json({
-        success: false,
-        message: xpressResponse.data?.message || "Wallet debit failed",
-        xpress: xpressResponse.data
-      });
-    }
+//     const xpressReference =
+//       xpressResponse.data?.reference ||
+//       xpressResponse.data?.transactionReference ||
+//       xpressResponse.data?.transactionId ||
+//       reference;
 
-    const xpressReference =
-      xpressResponse.data?.reference ||
-      xpressResponse.data?.transactionReference ||
-      xpressResponse.data?.transactionId ||
-      reference;
+//     console.log("✅ Xpress wallet-to-ticket debit success:", xpressResponse.data);
 
-    console.log("✅ Xpress wallet-to-ticket debit success:", xpressResponse.data);
+//     // =====================================================
+//     // 8. FETCH FRESH BALANCE FROM XPRESS (for logging)
+//     // =====================================================
+//     let newWalletBalance = availableBalance - fundAmount;
+//     try {
+//       const freshRes = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: xpressCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` }
+//         }
+//       );
+//       if (freshRes.data?.wallet?.availableBalance !== undefined) {
+//         newWalletBalance = Number(freshRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn("Could not refresh balance after ticket fund:", refreshError.message);
+//     }
 
-    // =====================================================
-    // 8. FETCH FRESH BALANCE FROM XPRESS (for logging)
-    // =====================================================
-    let newWalletBalance = availableBalance - fundAmount;
-    try {
-      const freshRes = await axios.get(
-        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
-        {
-          params: { customerId: xpressCustomerId },
-          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` }
-        }
-      );
-      if (freshRes.data?.wallet?.availableBalance !== undefined) {
-        newWalletBalance = Number(freshRes.data.wallet.availableBalance);
-      }
-    } catch (refreshError) {
-      console.warn("Could not refresh balance after ticket fund:", refreshError.message);
-    }
+//     // =====================================================
+//     // 9. CREDIT TICKET IN FIRESTORE (tickets are our system)
+//     // =====================================================
+//     // NOTE: Ticket balance IS authoritative in Firestore.
+//     // Only the wallet balance lives in Xpress.
+//     let newTicketBalance = 0;
+//     const currentTicketBalance = Number(ticketData.balance || 0);
 
-    // =====================================================
-    // 9. CREDIT TICKET IN FIRESTORE (tickets are our system)
-    // =====================================================
-    // NOTE: Ticket balance IS authoritative in Firestore.
-    // Only the wallet balance lives in Xpress.
-    let newTicketBalance = 0;
-    const currentTicketBalance = Number(ticketData.balance || 0);
+//     await db.runTransaction(async (tx) => {
+//       // Re-read ticket to get latest balance
+//       const freshTicketDoc = await tx.get(ticketRef);
+//       if (!freshTicketDoc.exists) throw new Error("Ticket not found");
 
-    await db.runTransaction(async (tx) => {
-      // Re-read ticket to get latest balance
-      const freshTicketDoc = await tx.get(ticketRef);
-      if (!freshTicketDoc.exists) throw new Error("Ticket not found");
+//       const freshTicketData = freshTicketDoc.data();
+//       const latestTicketBalance = Number(freshTicketData.balance || 0);
+//       newTicketBalance = latestTicketBalance + fundAmount;
 
-      const freshTicketData = freshTicketDoc.data();
-      const latestTicketBalance = Number(freshTicketData.balance || 0);
-      newTicketBalance = latestTicketBalance + fundAmount;
+//       // Update user-scoped ticket
+//       tx.set(
+//         ticketRef,
+//         {
+//           balance: newTicketBalance,
+//           updatedAt: admin.firestore.FieldValue.serverTimestamp()
+//         },
+//         { merge: true }
+//       );
 
-      // Update user-scoped ticket
-      tx.set(
-        ticketRef,
-        {
-          balance: newTicketBalance,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        },
-        { merge: true }
-      );
+//       // Update global ticket
+//       tx.set(
+//         globalTicketRef,
+//         {
+//           balance: newTicketBalance,
+//           updatedAt: admin.firestore.FieldValue.serverTimestamp()
+//         },
+//         { merge: true }
+//       );
 
-      // Update global ticket
-      tx.set(
-        globalTicketRef,
-        {
-          balance: newTicketBalance,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        },
-        { merge: true }
-      );
+//       // Notification flag
+//       tx.set(
+//         userRef,
+//         { notification: true, inappnotification: true },
+//         { merge: true }
+//       );
 
-      // Notification flag
-      tx.set(
-        userRef,
-        { notification: true, inappnotification: true },
-        { merge: true }
-      );
+//       // Sender (wallet) transaction
+//       tx.set(
+//         userRef.collection("Transactions").doc(reference),
+//         {
+//           type: "WalletToTicket",
+//           status: "senderTicket",
+//           provider: "xpress",
+//           amount: fundAmount,
+//           balanceAfter: newWalletBalance,
+//           balanceType: "xpress_wallet",
+//           cardNumber: walletCardId,
+//           cardType: "wallet",
+//           paymentMethod: "xpress",
+//           firstname: firstname || userData.firstName || userData.firstname || "",
+//           lastname: lastname || userData.lastName || userData.lastname || "",
+//           transactionNo: reference,
+//           reference,
+//           ticketId,
+//           businessType: "ticket",
+//           xpressReference,
+//           date: admin.firestore.FieldValue.serverTimestamp()
+//         }
+//       );
 
-      // Sender (wallet) transaction
-      tx.set(
-        userRef.collection("Transactions").doc(reference),
-        {
-          type: "WalletToTicket",
-          status: "senderTicket",
-          provider: "xpress",
-          amount: fundAmount,
-          balanceAfter: newWalletBalance,
-          balanceType: "xpress_wallet",
-          cardNumber: walletCardId,
-          cardType: "wallet",
-          paymentMethod: "xpress",
-          firstname: firstname || userData.firstName || userData.firstname || "",
-          lastname: lastname || userData.lastName || userData.lastname || "",
-          transactionNo: reference,
-          reference,
-          ticketId,
-          businessType: "ticket",
-          xpressReference,
-          date: admin.firestore.FieldValue.serverTimestamp()
-        }
-      );
+//       // Receiver (ticket) transaction
+//       tx.set(
+//         userRef.collection("Transactions").doc(`${reference}-ticket`),
+//         {
+//           type: "WalletToTicket",
+//           status: "ticketFundTransfr",
+//           provider: "xpress",
+//           amount: fundAmount,
+//           balance: newTicketBalance,
+//           balanceBefore: latestTicketBalance,
+//           balanceType: "ticket",
+//           cardNumber: ticketId,
+//           cardType: "ticket",
+//           paymentMethod: "xpress",
+//           firstname: firstname || userData.firstName || userData.firstname || "",
+//           lastname: lastname || userData.lastName || userData.lastname || "",
+//           transactionNo: reference,
+//           reference,
+//           walletCardId,
+//           businessType: "ticket",
+//           xpressReference,
+//           date: admin.firestore.FieldValue.serverTimestamp()
+//         }
+//       );
 
-      // Receiver (ticket) transaction
-      tx.set(
-        userRef.collection("Transactions").doc(`${reference}-ticket`),
-        {
-          type: "WalletToTicket",
-          status: "ticketFundTransfr",
-          provider: "xpress",
-          amount: fundAmount,
-          balance: newTicketBalance,
-          balanceBefore: latestTicketBalance,
-          balanceType: "ticket",
-          cardNumber: ticketId,
-          cardType: "ticket",
-          paymentMethod: "xpress",
-          firstname: firstname || userData.firstName || userData.firstname || "",
-          lastname: lastname || userData.lastName || userData.lastname || "",
-          transactionNo: reference,
-          reference,
-          walletCardId,
-          businessType: "ticket",
-          xpressReference,
-          date: admin.firestore.FieldValue.serverTimestamp()
-        }
-      );
+//       // Global transaction
+//       tx.set(txnRef, {
+//         type: "WalletToTicket",
+//         provider: "xpress",
+//         amount: fundAmount,
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         paymentMethod: "xpress",
+//         status: "success",
+//         sender: {
+//           userId,
+//           cardId: walletCardId,
+//           customerId: xpressCustomerId,
+//           firstname: firstname || userData.firstName || userData.firstname || "",
+//           lastname: lastname || userData.lastName || userData.lastname || ""
+//         },
+//         receiver: {
+//           userId,
+//           ticketId,
+//           type: "ticket",
+//           firstname: firstname || userData.firstName || userData.firstname || "",
+//           lastname: lastname || userData.lastName || userData.lastname || ""
+//         },
+//         senderBalanceAfter: newWalletBalance,
+//         receiverBalanceAfter: newTicketBalance,
+//         xpressData: xpressResponse.data,
+//         date: admin.firestore.FieldValue.serverTimestamp()
+//       });
 
-      // Global transaction
-      tx.set(txnRef, {
-        type: "WalletToTicket",
-        provider: "xpress",
-        amount: fundAmount,
-        transactionNo: reference,
-        reference,
-        xpressReference,
-        paymentMethod: "xpress",
-        status: "success",
-        sender: {
-          userId,
-          cardId: walletCardId,
-          customerId: xpressCustomerId,
-          firstname: firstname || userData.firstName || userData.firstname || "",
-          lastname: lastname || userData.lastName || userData.lastname || ""
-        },
-        receiver: {
-          userId,
-          ticketId,
-          type: "ticket",
-          firstname: firstname || userData.firstName || userData.firstname || "",
-          lastname: lastname || userData.lastName || userData.lastname || ""
-        },
-        senderBalanceAfter: newWalletBalance,
-        receiverBalanceAfter: newTicketBalance,
-        xpressData: xpressResponse.data,
-        date: admin.firestore.FieldValue.serverTimestamp()
-      });
+//       // Ledger entry (audit)
+//       tx.set(
+//         db.collection("TransfrLedger").doc(reference),
+//         {
+//           reference,
+//           type: "xpress_wallet_to_ticket",
+//           provider: "xpress",
+//           amount: fundAmount,
+//           userId,
+//           walletCardId,
+//           ticketId,
+//           xpressCustomerId,
+//           source: "xpress_wallet",
+//           destination: "ticket",
+//           walletBalanceAfter: newWalletBalance,
+//           ticketBalanceBefore: latestTicketBalance,
+//           ticketBalanceAfter: newTicketBalance,
+//           xpressReference,
+//           status: "success",
+//           createdAt: admin.firestore.FieldValue.serverTimestamp()
+//         }
+//       );
+//     });
 
-      // Ledger entry (audit)
-      tx.set(
-        db.collection("TransfrLedger").doc(reference),
-        {
-          reference,
-          type: "xpress_wallet_to_ticket",
-          provider: "xpress",
-          amount: fundAmount,
-          userId,
-          walletCardId,
-          ticketId,
-          xpressCustomerId,
-          source: "xpress_wallet",
-          destination: "ticket",
-          walletBalanceAfter: newWalletBalance,
-          ticketBalanceBefore: latestTicketBalance,
-          ticketBalanceAfter: newTicketBalance,
-          xpressReference,
-          status: "success",
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
-        }
-      );
-    });
+//     // =====================================================
+//     // 10. PUSH NOTIFICATION
+//     // =====================================================
+//     const token = fcmToken || userData?.fcm;
+//     if (token) {
+//       try {
+//         await messaging.send({
+//           token,
+//           notification: {
+//             title: "Ticket Funded 🎫",
+//             body: `₦${fundAmount.toLocaleString()} added to your ticket balance`
+//           },
+//           data: {
+//             type: "ticket_fund",
+//             transactionNo: reference,
+//             amount: fundAmount.toString()
+//           }
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError);
+//       }
+//     }
 
-    // =====================================================
-    // 10. PUSH NOTIFICATION
-    // =====================================================
-    const token = fcmToken || userData?.fcm;
-    if (token) {
-      try {
-        await messaging.send({
-          token,
-          notification: {
-            title: "Ticket Funded 🎫",
-            body: `₦${fundAmount.toLocaleString()} added to your ticket balance`
-          },
-          data: {
-            type: "ticket_fund",
-            transactionNo: reference,
-            amount: fundAmount.toString()
-          }
-        });
-      } catch (pushError) {
-        console.error("Push notification failed:", pushError);
-      }
-    }
+//     // =====================================================
+//     // 11. SUCCESS RESPONSE
+//     // =====================================================
+//     return res.json({
+//       success: true,
+//       message: "Ticket funded successfully",
+//       data: {
+//         reference,
+//         xpressReference,
+//         amount: fundAmount,
+//         walletCardId,
+//         ticketId,
+//         walletBalanceAfter: newWalletBalance,
+//         ticketBalanceAfter: newTicketBalance,
+//         status: "success",
+//         transferType: "xpress_wallet_to_ticket"
+//       }
+//     });
 
-    // =====================================================
-    // 11. SUCCESS RESPONSE
-    // =====================================================
-    return res.json({
-      success: true,
-      message: "Ticket funded successfully",
-      data: {
-        reference,
-        xpressReference,
-        amount: fundAmount,
-        walletCardId,
-        ticketId,
-        walletBalanceAfter: newWalletBalance,
-        ticketBalanceAfter: newTicketBalance,
-        status: "success",
-        transferType: "xpress_wallet_to_ticket"
-      }
-    });
-
-  } catch (error) {
-    console.error("Wallet-to-Ticket Error:", error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: error.response?.data?.message || error.message || "Internal server error"
-    });
-  }
-});
+//   } catch (error) {
+//     console.error("Wallet-to-Ticket Error:", error.response?.data || error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Internal server error"
+//     });
+//   }
+// });
 // app.get("/withdrawal-status/:reference", async (req, res) => {
 //   try {
 //     const docRef = db.collection("withdrawal").doc(req.params.reference);
@@ -10005,6 +10364,815 @@ app.post("/wallet-to-ticket", async (req, res) => {
 //   }
 // });
 
+
+app.post("/wallet-to-ticket", async (req, res) => {
+  try {
+    const {
+      userId,
+      walletCardId,
+      ticketId,
+      amount,
+      firstname,
+      lastname,
+      transactionNo,
+      fcmToken
+    } = req.body;
+
+    const fundAmount = Number(amount);
+
+    // =====================================================
+    // 1. VALIDATION
+    // =====================================================
+    if (!userId || !walletCardId || !ticketId || !fundAmount || fundAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing or invalid transfer information"
+      });
+    }
+
+    const reference =
+      transactionNo ||
+      `TKT-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+    // =====================================================
+    // 2. FIRESTORE REFERENCES
+    // =====================================================
+    const userRef = db.collection("users").doc(userId);
+    const walletCardRef = userRef.collection("Cards").doc(walletCardId);
+    const ticketRef = userRef.collection("tickets").doc(ticketId);
+    const globalTicketRef = db.collection("tickets").doc(ticketId);
+    const txnRef = db.collection("AllTransaction").doc(reference);
+
+    // =====================================================
+    // 3. DUPLICATE CHECK
+    // =====================================================
+    const existingTxn = await txnRef.get();
+    if (existingTxn.exists) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate transaction detected"
+      });
+    }
+
+    // =====================================================
+    // 4. FETCH USER + WALLET + TICKET
+    // =====================================================
+    const [userDoc, walletDoc, ticketDoc] = await Promise.all([
+      userRef.get(),
+      walletCardRef.get(),
+      ticketRef.get()
+    ]);
+
+    if (!userDoc.exists || !walletDoc.exists || !ticketDoc.exists) {
+      return res.status(404).json({ success: false, message: "User, Wallet, or Ticket not found" });
+    }
+
+    const userData = userDoc.data();
+    const walletData = walletDoc.data();
+    const ticketData = ticketDoc.data();
+
+    // =====================================================
+    // 5. RESOLVE XPRESS CUSTOMER ID
+    // =====================================================
+    const xpressCustomerId =
+      walletData?.xpress?.customerId ||
+      userData?.xpress?.customerId;
+
+    if (!xpressCustomerId) {
+      return res.status(400).json({
+        success: false,
+        message: "User does not have an Xpress wallet. Please create one first."
+      });
+    }
+
+    // =====================================================
+    // 6. VERIFY BALANCE VIA XPRESS
+    // =====================================================
+    let senderWallet;
+    try {
+      const walletResponse = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+        {
+          params: { customerId: xpressCustomerId },
+          headers: {
+            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        }
+      );
+      senderWallet = walletResponse.data?.wallet;
+    } catch (walletError) {
+      console.error("XPRESS WALLET FETCH ERROR:", walletError.response?.data || walletError.message);
+      return res.status(400).json({
+        success: false,
+        message: "Unable to verify Xpress wallet balance"
+      });
+    }
+
+    const availableBalance = Number(senderWallet?.availableBalance || 0);
+    if (availableBalance < fundAmount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient balance",
+        available: availableBalance
+      });
+    }
+
+    // =====================================================
+    // 7. TRANSFER TO TRANSFR GLOBAL MERCHANT ACCOUNT
+    // =====================================================
+    let xpressResponse;
+    try {
+      xpressResponse = await axios.post(
+        `${process.env.XPRESS_BASE_URL}/transfer/bank/customer`,
+        {
+          amount: fundAmount,
+          sortCode: "100040", // Xpresswallet Bank Code
+          accountNumber: "8801689068", // Transfr Global Account Number
+          accountName: "Transfr Global Resources Limited",
+          narration: `Ticket funding for user ${userId}`,
+          customerId: xpressCustomerId,
+          metadata: {
+            firebaseUserId: userId,
+            walletCardId,
+            ticketId,
+            purpose: "ticket_funding",
+            source: "transfr_app"
+          }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 20000
+        }
+      );
+    } catch (xpressError) {
+      console.error("XPRESS TRANSFER ERROR:",
+        xpressError.response?.data || xpressError.message
+      );
+
+      // Log failed attempt for audit
+      await txnRef.set({
+        type: "WalletToTicket",
+        provider: "xpress",
+        amount: fundAmount,
+        status: "failed",
+        failureReason: xpressError.response?.data?.message || xpressError.message,
+        sender: { userId, walletCardId, customerId: xpressCustomerId },
+        receiver: { userId, ticketId, type: "ticket" },
+        reference,
+        paymentMethod: "xpress",
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: xpressError.response?.data?.message || "Transfer to merchant account failed",
+        xpress: xpressError.response?.data || null
+      });
+    }
+
+    const xpressData = xpressResponse.data;
+    if (!xpressData || xpressData.status === false) {
+      return res.status(400).json({
+        success: false,
+        message: xpressData?.message || "Transfer to merchant account failed",
+        xpress: xpressData
+      });
+    }
+
+    const xpressReference =
+      xpressData?.transfer?.reference ||
+      xpressData?.reference ||
+      xpressData?.transactionReference ||
+      xpressData?.transactionId ||
+      reference;
+
+    console.log("✅ Xpress transfer to Transfr Global success:", xpressData);
+
+    // =====================================================
+    // 8. FETCH FRESH BALANCE FROM XPRESS (for logging)
+    // =====================================================
+    let newWalletBalance = availableBalance - fundAmount;
+    try {
+      const freshRes = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+        {
+          params: { customerId: xpressCustomerId },
+          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000
+        }
+      );
+      if (freshRes.data?.wallet?.availableBalance !== undefined) {
+        newWalletBalance = Number(freshRes.data.wallet.availableBalance);
+      }
+    } catch (refreshError) {
+      console.warn("Could not refresh balance after ticket fund:", refreshError.message);
+    }
+
+    // =====================================================
+    // 9. CREDIT TICKET IN FIRESTORE
+    // =====================================================
+    let newTicketBalance = 0;
+
+    await db.runTransaction(async (tx) => {
+      const freshTicketDoc = await tx.get(ticketRef);
+      if (!freshTicketDoc.exists) throw new Error("Ticket not found");
+
+      const freshTicketData = freshTicketDoc.data();
+      const latestTicketBalance = Number(freshTicketData.balance || 0);
+      newTicketBalance = latestTicketBalance + fundAmount;
+
+      // Update user-scoped ticket
+      tx.update(ticketRef, {
+        balance: newTicketBalance,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Update global ticket
+      tx.set(globalTicketRef, {
+        balance: newTicketBalance,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      // Notification flag
+      tx.set(userRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // Sender (wallet) transaction
+      tx.set(userRef.collection("Transactions").doc(reference), {
+        type: "WalletToTicket",
+        status: "senderTicket",
+        provider: "xpress",
+        amount: fundAmount,
+        balanceAfter: newWalletBalance,
+        balanceType: "xpress_wallet",
+        cardNumber: walletCardId,
+        cardType: "wallet",
+        paymentMethod: "xpress",
+        firstname: firstname || userData.firstName || userData.firstname || "",
+        lastname: lastname || userData.lastName || userData.lastname || "",
+        transactionNo: reference,
+        reference,
+        ticketId,
+        businessType: "ticket",
+        xpressReference,
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Receiver (ticket) transaction
+      tx.set(userRef.collection("Transactions").doc(`${reference}-ticket`), {
+        type: "WalletToTicket",
+        status: "ticketFundTransfr",
+        provider: "xpress",
+        amount: fundAmount,
+        balance: newTicketBalance,
+        balanceBefore: latestTicketBalance,
+        balanceType: "ticket",
+        cardNumber: ticketId,
+        cardType: "ticket",
+        paymentMethod: "xpress",
+        firstname: firstname || userData.firstName || userData.firstname || "",
+        lastname: lastname || userData.lastName || userData.lastname || "",
+        transactionNo: reference,
+        reference,
+        walletCardId,
+        businessType: "ticket",
+        xpressReference,
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Global transaction
+      tx.set(txnRef, {
+        type: "WalletToTicket",
+        provider: "xpress",
+        amount: fundAmount,
+        transactionNo: reference,
+        reference,
+        xpressReference,
+        paymentMethod: "xpress",
+        status: "success",
+        sender: {
+          userId,
+          cardId: walletCardId,
+          customerId: xpressCustomerId,
+          firstname: firstname || userData.firstName || userData.firstname || "",
+          lastname: lastname || userData.lastName || userData.lastname || ""
+        },
+        receiver: {
+          userId,
+          ticketId,
+          type: "ticket",
+          firstname: firstname || userData.firstName || userData.firstname || "",
+          lastname: lastname || userData.lastName || userData.lastname || ""
+        },
+        senderBalanceAfter: newWalletBalance,
+        receiverBalanceAfter: newTicketBalance,
+        xpressData: xpressData,
+        date: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Ledger entry (audit)
+      tx.set(db.collection("TransfrLedger").doc(reference), {
+        reference,
+        type: "xpress_to_merchant_to_ticket",
+        provider: "xpress",
+        amount: fundAmount,
+        userId,
+        walletCardId,
+        ticketId,
+        xpressCustomerId,
+        source: "xpress_wallet",
+        destination: "ticket",
+        walletBalanceAfter: newWalletBalance,
+        ticketBalanceBefore: latestTicketBalance,
+        ticketBalanceAfter: newTicketBalance,
+        xpressReference,
+        status: "success",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // =====================================================
+    // 10. PUSH NOTIFICATION
+    // =====================================================
+    const token = fcmToken || userData?.fcm;
+    if (token) {
+      try {
+        await messaging.send({
+          token,
+          notification: {
+            title: "Ticket Funded 🎫",
+            body: `₦${fundAmount.toLocaleString()} added to your ticket balance`
+          },
+          data: {
+            type: "ticket_fund",
+            transactionNo: reference,
+            amount: fundAmount.toString()
+          }
+        });
+      } catch (pushError) {
+        console.error("Push notification failed:", pushError);
+      }
+    }
+
+    // =====================================================
+    // 11. SUCCESS RESPONSE
+    // =====================================================
+    return res.json({
+      success: true,
+      message: "Ticket funded successfully",
+      data: {
+        reference,
+        xpressReference,
+        amount: fundAmount,
+        walletCardId,
+        ticketId,
+        walletBalanceAfter: newWalletBalance,
+        ticketBalanceAfter: newTicketBalance,
+        status: "success",
+        transferType: "xpress_to_merchant_to_ticket"
+      }
+    });
+
+  } catch (error) {
+    console.error("Wallet-to-Ticket Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Internal server error"
+    });
+  }
+});
+// app.post("/transfer-scan", async (req, res) => {
+//   try {
+//     const {
+//       senderPhone,
+//       receiverPhone,
+//       senderCardNumber,
+//       receiverCardNumber,
+//       amount,
+//       transactionNo,
+//       senderFirstname,
+//       senderLastname,
+//     } = req.body;
+
+//     const transferAmount = Number(amount);
+
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!senderPhone || !receiverPhone || !amount || !transactionNo) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     if (transferAmount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid amount",
+//       });
+//     }
+
+//     if (senderCardNumber === receiverCardNumber) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "You cannot transfer to the same wallet",
+//       });
+//     }
+
+//     const reference = transactionNo;
+
+//     // =====================================================
+//     // 2. FIRESTORE REFERENCES
+//     // =====================================================
+//     const senderUserRef = db.collection("users").doc(senderPhone);
+//     const receiverUserRef = db.collection("users").doc(receiverPhone);
+
+//     const senderCardRef = senderUserRef.collection("Cards").doc(senderCardNumber);
+//     const receiverCardRef = receiverUserRef.collection("Cards").doc(receiverCardNumber);
+
+//     const txnRef = db.collection("AllTransaction").doc(reference);
+
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction detected",
+//       });
+//     }
+
+//     // =====================================================
+//     // 4. FETCH SENDER + RECEIVER + CARDS
+//     // =====================================================
+//     const [senderUserSnap, receiverUserSnap, senderCardSnap, receiverCardSnap] =
+//       await Promise.all([
+//         senderUserRef.get(),
+//         receiverUserRef.get(),
+//         senderCardRef.get(),
+//         receiverCardRef.get(),
+//       ]);
+
+//     if (!senderUserSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Sender not found" });
+//     }
+//     if (!receiverUserSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Receiver not found" });
+//     }
+//     if (!senderCardSnap.exists || !receiverCardSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Card not found" });
+//     }
+
+//     const senderData = senderUserSnap.data();
+//     const receiverData = receiverUserSnap.data();
+//     const senderCardData = senderCardSnap.data();
+//     const receiverCardData = receiverCardSnap.data();
+
+//     // =====================================================
+//     // 5. RESOLVE XPRESS CUSTOMER IDs
+//     // =====================================================
+//     const senderCustomerId =
+//       senderCardData?.xpress?.customerId ||
+//       senderData?.xpress?.customerId;
+
+//     const receiverCustomerId =
+//       receiverCardData?.xpress?.customerId ||
+//       receiverData?.xpress?.customerId;
+
+//     if (!senderCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Sender does not have an Xpress wallet. Please create one first.",
+//       });
+//     }
+
+//     if (!receiverCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Receiver does not have an Xpress wallet. They must create one first.",
+//       });
+//     }
+
+//     // =====================================================
+//     // 6. CHECK SENDER BALANCE VIA XPRESS (SOURCE OF TRUTH)
+//     // =====================================================
+//     let senderWallet;
+//     try {
+//       const walletResponse = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: senderCustomerId },
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//         }
+//       );
+//       senderWallet = walletResponse.data?.wallet;
+//     } catch (walletError) {
+//       console.error(
+//         "XPRESS WALLET FETCH ERROR:",
+//         walletError.response?.data || walletError.message
+//       );
+//       return res.status(400).json({
+//         success: false,
+//         message: "Unable to verify sender's Xpress wallet",
+//       });
+//     }
+
+//     const senderAvailableBalance = Number(senderWallet?.availableBalance || 0);
+//     if (senderAvailableBalance < transferAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient balance",
+//         available: senderAvailableBalance,
+//       });
+//     }
+
+//     // =====================================================
+//     // 7. CALL XPRESS WALLET-TO-WALLET TRANSFER
+//     // =====================================================
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/transfer/wallet`,
+//         {
+//           amount: transferAmount,
+//           fromCustomerId: senderCustomerId,
+//           toCustomerId: receiverCustomerId,
+//         },
+//         {
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error(
+//         "XPRESS WALLET-TO-WALLET ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
+
+//       // Log failed attempt for audit
+//       await db.collection("AllTransaction").doc(reference).set({
+//         type: "WalletToWallet",
+//         provider: "xpress",
+//         paymentMethod: "scan",
+//         amount: transferAmount,
+//         status: "failed",
+//         failureReason:
+//           xpressError.response?.data?.message || xpressError.message,
+//         sender: {
+//           phone: senderPhone,
+//           cardId: senderCardNumber,
+//           customerId: senderCustomerId,
+//         },
+//         receiver: {
+//           phone: receiverPhone,
+//           cardId: receiverCardNumber,
+//           customerId: receiverCustomerId,
+//         },
+//         reference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressError.response?.data?.message || "Wallet transfer failed",
+//         xpress: xpressError.response?.data || null,
+//       });
+//     }
+
+//     const xpressData = xpressResponse.data;
+
+//     // Verify success
+//     if (!xpressData || xpressData.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressData?.message || "Wallet transfer failed",
+//         xpress: xpressData,
+//       });
+//     }
+
+//     const xpressReference =
+//       xpressData?.data?.reference ||
+//       xpressData?.reference ||
+//       xpressData?.transactionReference ||
+//       reference;
+
+//     console.log("✅ Xpress scan transfer success:", xpressData);
+
+//     // =====================================================
+//     // 8. FETCH FRESH BALANCES (for logging only)
+//     // =====================================================
+//     let newSenderBalance = senderAvailableBalance - transferAmount;
+//     let newReceiverBalance = null;
+
+//     try {
+//       const [freshSenderRes, freshReceiverRes] = await Promise.all([
+//         axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
+//           params: { customerId: senderCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//         }),
+//         axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
+//           params: { customerId: receiverCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//         }),
+//       ]);
+//       if (freshSenderRes.data?.wallet?.availableBalance !== undefined) {
+//         newSenderBalance = Number(freshSenderRes.data.wallet.availableBalance);
+//       }
+//       if (freshReceiverRes.data?.wallet?.availableBalance !== undefined) {
+//         newReceiverBalance = Number(freshReceiverRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn("Could not refresh balances after scan transfer:", refreshError.message);
+//     }
+
+//     // =====================================================
+//     // 9. LOG TRANSACTIONS IN FIRESTORE
+//     // =====================================================
+//     const batch = db.batch();
+
+//     // Sender's transaction log
+//     batch.set(
+//       senderUserRef.collection("Transactions").doc(reference),
+//       {
+//         type: "WalletTransferSent",
+//         provider: "xpress",
+//         status: "sender",
+//         amount: transferAmount,
+//         balanceAfter: newSenderBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: senderCardNumber,
+//         cardType: senderCardData.cardType || "wallet",
+//         paymentMethod: "scan",
+//         firstname: senderFirstname || senderData.firstName || senderData.firstname || "",
+//         lastname: senderLastname || senderData.lastName || senderData.lastname || "",
+//         senderPhone,
+//         senderCustomerId,
+//         receiverPhone,
+//         receiverCardNumber,
+//         receiverCustomerId,
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       }
+//     );
+
+//     // Receiver's transaction log
+//     batch.set(
+//       receiverUserRef.collection("Transactions").doc(reference),
+//       {
+//         type: "WalletTransferReceived",
+//         provider: "xpress",
+//         status: "receiver",
+//         amount: transferAmount,
+//         balanceAfter: newReceiverBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: receiverCardNumber,
+//         cardType: receiverCardData.cardType || "wallet",
+//         paymentMethod: "scan",
+//         firstname: senderFirstname || senderData.firstName || senderData.firstname || "",
+//         lastname: senderLastname || senderData.lastName || senderData.lastname || "",
+//         senderPhone,
+//         senderCardNumber,
+//         senderCustomerId,
+//         receiverPhone,
+//         receiverCustomerId,
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       }
+//     );
+
+//     // Global transaction log
+//     batch.set(txnRef, {
+//       type: "WalletToWallet",
+//       provider: "xpress",
+//       amount: transferAmount,
+//       transactionNo: reference,
+//       reference,
+//       xpressReference,
+//       paymentMethod: "scan",
+//       status: "success",
+//       sender: {
+//         phone: senderPhone,
+//         cardId: senderCardNumber,
+//         customerId: senderCustomerId,
+//         firstname: senderFirstname || senderData.firstName || senderData.firstname || "",
+//         lastname: senderLastname || senderData.lastName || senderData.lastname || "",
+//       },
+//       receiver: {
+//         phone: receiverPhone,
+//         cardId: receiverCardNumber,
+//         customerId: receiverCustomerId,
+//         firstname: receiverData.firstName || receiverData.firstname || "",
+//         lastname: receiverData.lastName || receiverData.lastname || "",
+//       },
+//       senderBalanceAfter: newSenderBalance,
+//       receiverBalanceAfter: newReceiverBalance,
+//       xpressData,
+//       date: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     // Ledger entry (audit)
+//     batch.set(
+//       db.collection("TransfrLedger").doc(reference),
+//       {
+//         reference,
+//         type: "xpress_wallet_to_wallet_scan",
+//         provider: "xpress",
+//         amount: transferAmount,
+//         senderPhone,
+//         receiverPhone,
+//         senderCardId: senderCardNumber,
+//         receiverCardId: receiverCardNumber,
+//         senderCustomerId,
+//         receiverCustomerId,
+//         senderBalanceAfter: newSenderBalance,
+//         receiverBalanceAfter: newReceiverBalance,
+//         xpressReference,
+//         status: "success",
+//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       }
+//     );
+
+//     // Notification flags
+//     batch.set(senderUserRef, { notification: true }, { merge: true });
+//     batch.set(
+//       receiverUserRef,
+//       { notification: true, inappnotification: true },
+//       { merge: true }
+//     );
+
+//     await batch.commit();
+
+//     // =====================================================
+//     // 10. PUSH NOTIFICATION TO RECEIVER
+//     // =====================================================
+//     const receiverToken = receiverData?.fcm;
+//     if (receiverToken) {
+//       try {
+//         await messaging.send({
+//           token: receiverToken,
+//           notification: {
+//             title: "Money Received 💰",
+//             body: `₦${transferAmount.toLocaleString()} credited to your wallet`,
+//           },
+//           data: {
+//             type: "receive",
+//             transactionNo: reference,
+//             amount: transferAmount.toString(),
+//           },
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError);
+//       }
+//     }
+
+//     // =====================================================
+//     // 11. SUCCESS RESPONSE
+//     // =====================================================
+//     return res.status(200).json({
+//       success: true,
+//       message: "Transfer successful",
+//       data: {
+//         transactionNo: reference,
+//         xpressReference,
+//         amount: transferAmount,
+//         senderPhone,
+//         senderCustomerId,
+//         receiverPhone,
+//         receiverCustomerId,
+//         senderCardId: senderCardNumber,
+//         receiverCardId: receiverCardNumber,
+//         senderBalanceAfter: newSenderBalance,
+//         receiverBalanceAfter: newReceiverBalance,
+//         status: "success",
+//         transferType: "xpress_wallet_to_wallet_scan",
+//       },
+//     });
+
+//   } catch (error) {
+//     console.error("Transfer scan error:", error.response?.data || error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Transfer failed",
+//     });
+//   }
+// });
+
+
 app.post("/transfer-scan", async (req, res) => {
   try {
     const {
@@ -10079,11 +11247,8 @@ app.post("/transfer-scan", async (req, res) => {
         receiverCardRef.get(),
       ]);
 
-    if (!senderUserSnap.exists) {
-      return res.status(404).json({ success: false, message: "Sender not found" });
-    }
-    if (!receiverUserSnap.exists) {
-      return res.status(404).json({ success: false, message: "Receiver not found" });
+    if (!senderUserSnap.exists || !receiverUserSnap.exists) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
     if (!senderCardSnap.exists || !receiverCardSnap.exists) {
       return res.status(404).json({ success: false, message: "Card not found" });
@@ -10095,7 +11260,7 @@ app.post("/transfer-scan", async (req, res) => {
     const receiverCardData = receiverCardSnap.data();
 
     // =====================================================
-    // 5. RESOLVE XPRESS CUSTOMER IDs
+    // 5. RESOLVE CUSTOMER IDs & NUBAN STATUS
     // =====================================================
     const senderCustomerId =
       senderCardData?.xpress?.customerId ||
@@ -10104,24 +11269,178 @@ app.post("/transfer-scan", async (req, res) => {
     const receiverCustomerId =
       receiverCardData?.xpress?.customerId ||
       receiverData?.xpress?.customerId;
+      
+    const senderIsNuban = !!senderCustomerId;
+    const receiverIsNuban = !!receiverCustomerId || receiverData?.nubanEnabled === true;
 
-    if (!senderCustomerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Sender does not have an Xpress wallet. Please create one first.",
+    // =====================================================
+    // 6. OPTION A: BOTH USERS NOT NUBAN (Pure Firestore Transfer)
+    // =====================================================
+    if (!senderIsNuban && !receiverIsNuban) {
+      const senderFirestoreBalance = Number(senderCardData.balance || 0);
+      
+      if (senderFirestoreBalance < transferAmount) {
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient balance",
+          available: senderFirestoreBalance
+        });
+      }
+
+      let newSenderBalance = 0;
+      let newReceiverBalance = 0;
+
+      await db.runTransaction(async (tx) => {
+        const freshSenderDoc = await tx.get(senderCardRef);
+        const freshReceiverDoc = await tx.get(receiverCardRef);
+
+        const latestSenderBalance = Number(freshSenderDoc.data().balance || 0);
+        const latestReceiverBalance = Number(freshReceiverDoc.data().balance || 0);
+
+        if (latestSenderBalance < transferAmount) {
+          throw new Error("Insufficient balance");
+        }
+
+        newSenderBalance = latestSenderBalance - transferAmount;
+        newReceiverBalance = latestReceiverBalance + transferAmount;
+
+        // Update balances
+        tx.update(senderCardRef, {
+          balance: newSenderBalance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        tx.update(receiverCardRef, {
+          balance: newReceiverBalance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Notification flags
+        tx.set(senderUserRef, { notification: true }, { merge: true });
+        tx.set(receiverUserRef, { notification: true, inappnotification: true }, { merge: true });
+
+        // Sender transaction
+        tx.set(senderUserRef.collection("Transactions").doc(reference), {
+          type: "WalletTransferSent",
+          provider: "firestore",
+          status: "sender",
+          amount: transferAmount,
+          balanceAfter: newSenderBalance,
+          balanceType: "firestore_wallet",
+          cardNumber: senderCardNumber,
+          cardType: senderCardData.cardType || "wallet",
+          paymentMethod: "scan",
+          firstname: senderFirstname || senderData.firstName || senderData.firstname || "",
+          lastname: senderLastname || senderData.lastName || senderData.lastname || "",
+          senderPhone,
+          receiverPhone,
+          receiverCardNumber,
+          transactionNo: reference,
+          transferType: "firestore_to_firestore_scan",
+          date: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Receiver transaction
+        tx.set(receiverUserRef.collection("Transactions").doc(reference), {
+          type: "WalletTransferReceived",
+          provider: "firestore",
+          status: "receiver",
+          amount: transferAmount,
+          balanceAfter: newReceiverBalance,
+          balanceType: "firestore_wallet",
+          cardNumber: receiverCardNumber,
+          cardType: receiverCardData.cardType || "wallet",
+          paymentMethod: "scan",
+          firstname: senderFirstname || senderData.firstName || senderData.firstname || "",
+          lastname: senderLastname || senderData.lastName || senderData.lastname || "",
+          senderPhone,
+          receiverPhone,
+          senderCardNumber,
+          transactionNo: reference,
+          transferType: "firestore_to_firestore_scan",
+          date: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Global transaction log
+        tx.set(txnRef, {
+          type: "WalletToWallet",
+          provider: "firestore",
+          amount: transferAmount,
+          transactionNo: reference,
+          reference,
+          paymentMethod: "scan",
+          status: "success",
+          transferType: "firestore_to_firestore_scan",
+          sender: {
+            phone: senderPhone,
+            cardId: senderCardNumber,
+            firstname: senderFirstname || senderData.firstName || senderData.firstname || "",
+            lastname: senderLastname || senderData.lastName || senderData.lastname || "",
+          },
+          receiver: {
+            phone: receiverPhone,
+            cardId: receiverCardNumber,
+            firstname: receiverData.firstName || receiverData.firstname || "",
+            lastname: receiverData.lastName || receiverData.lastname || "",
+          },
+          senderBalanceAfter: newSenderBalance,
+          receiverBalanceAfter: newReceiverBalance,
+          date: admin.firestore.FieldValue.serverTimestamp(),
+        });
       });
-    }
 
-    if (!receiverCustomerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Receiver does not have an Xpress wallet. They must create one first.",
+      // Push notification
+      const receiverToken = receiverData?.fcm;
+      if (receiverToken) {
+        try {
+          await messaging.send({
+            token: receiverToken,
+            notification: {
+              title: "Money Received 💰",
+              body: `₦${transferAmount.toLocaleString()} credited to your wallet`,
+            },
+            data: {
+              type: "receive",
+              transactionNo: reference,
+              amount: transferAmount.toString(),
+            },
+          });
+        } catch (pushError) {
+          console.error("Push notification failed:", pushError);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Transfer successful",
+        data: {
+          transactionNo: reference,
+          amount: transferAmount,
+          senderPhone,
+          receiverPhone,
+          senderCardId: senderCardNumber,
+          receiverCardId: receiverCardNumber,
+          senderBalanceAfter: newSenderBalance,
+          receiverBalanceAfter: newReceiverBalance,
+          status: "success",
+          transferType: "firestore_to_firestore_scan",
+        },
       });
     }
 
     // =====================================================
-    // 6. CHECK SENDER BALANCE VIA XPRESS (SOURCE OF TRUTH)
+    // 7. EDGE CASE: SENDER NOT NUBAN, RECEIVER IS NUBAN
     // =====================================================
+    if (!senderIsNuban) {
+      return res.status(400).json({
+        success: false,
+        message: "Sender does not have an Xpress wallet, but receiver does. Please upgrade your wallet to transfer to this user.",
+      });
+    }
+
+    // =====================================================
+    // 8. OPTION B: SENDER IS NUBAN (Xpress Transfer)
+    // =====================================================
+    // Check Sender Balance via Xpress
     let senderWallet;
     try {
       const walletResponse = await axios.get(
@@ -10132,6 +11451,7 @@ app.post("/transfer-scan", async (req, res) => {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json',
           },
+          timeout: 15000
         }
       );
       senderWallet = walletResponse.data?.wallet;
@@ -10155,50 +11475,73 @@ app.post("/transfer-scan", async (req, res) => {
       });
     }
 
-    // =====================================================
-    // 7. CALL XPRESS WALLET-TO-WALLET TRANSFER
-    // =====================================================
+    // Call Xpress Transfer
     let xpressResponse;
+    let transferType = "";
+
     try {
-      xpressResponse = await axios.post(
-        `${process.env.XPRESS_BASE_URL}/transfer/wallet`,
-        {
-          amount: transferAmount,
-          fromCustomerId: senderCustomerId,
-          toCustomerId: receiverCustomerId,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-            'Content-Type': 'application/json',
+      if (receiverIsNuban) {
+        // Direct Xpress Wallet to Xpress Wallet
+        transferType = "xpress_to_xpress_scan";
+        xpressResponse = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/transfer/wallet`,
+          {
+            amount: transferAmount,
+            fromCustomerId: senderCustomerId,
+            toCustomerId: receiverCustomerId,
           },
-        }
-      );
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 20000
+          }
+        );
+      } else {
+        // Transfer to Transfr Global Merchant Account
+        transferType = "xpress_to_firestore_scan";
+        xpressResponse = await axios.post(
+          `${process.env.XPRESS_BASE_URL}/transfer/bank/customer`,
+          {
+            amount: transferAmount,
+            sortCode: "100040",
+            accountNumber: "8801689068",
+            accountName: "Transfr Global Resources Limited",
+            narration: `Scan transfer for user ${receiverPhone}`,
+            customerId: senderCustomerId,
+            metadata: {
+              firebaseUserId: senderPhone,
+              receiverPhone,
+              reference,
+              purpose: "internal_wallet_transfer_scan"
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 20000
+          }
+        );
+      }
     } catch (xpressError) {
       console.error(
-        "XPRESS WALLET-TO-WALLET ERROR:",
+        `XPRESS ${transferType} ERROR:`,
         xpressError.response?.data || xpressError.message
       );
 
-      // Log failed attempt for audit
       await db.collection("AllTransaction").doc(reference).set({
         type: "WalletToWallet",
         provider: "xpress",
         paymentMethod: "scan",
         amount: transferAmount,
         status: "failed",
-        failureReason:
-          xpressError.response?.data?.message || xpressError.message,
-        sender: {
-          phone: senderPhone,
-          cardId: senderCardNumber,
-          customerId: senderCustomerId,
-        },
-        receiver: {
-          phone: receiverPhone,
-          cardId: receiverCardNumber,
-          customerId: receiverCustomerId,
-        },
+        failureReason: xpressError.response?.data?.message || xpressError.message,
+        sender: { phone: senderPhone, cardId: senderCardNumber, customerId: senderCustomerId },
+        receiver: { phone: receiverPhone, cardId: receiverCardNumber, customerId: receiverCustomerId || null },
+        transferType,
         reference,
         date: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -10212,7 +11555,6 @@ app.post("/transfer-scan", async (req, res) => {
 
     const xpressData = xpressResponse.data;
 
-    // Verify success
     if (!xpressData || xpressData.status === false) {
       return res.status(400).json({
         success: false,
@@ -10222,46 +11564,39 @@ app.post("/transfer-scan", async (req, res) => {
     }
 
     const xpressReference =
+      xpressData?.transfer?.reference ||
       xpressData?.data?.reference ||
       xpressData?.reference ||
       xpressData?.transactionReference ||
       reference;
 
-    console.log("✅ Xpress scan transfer success:", xpressData);
+    console.log(`✅ Xpress ${transferType} success:`, xpressData);
 
-    // =====================================================
-    // 8. FETCH FRESH BALANCES (for logging only)
-    // =====================================================
+    // Calculate New Balances
     let newSenderBalance = senderAvailableBalance - transferAmount;
-    let newReceiverBalance = null;
+    let newReceiverFirestoreBalance = null;
 
-    try {
-      const [freshSenderRes, freshReceiverRes] = await Promise.all([
-        axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
-          params: { customerId: senderCustomerId },
-          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
-        }),
-        axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
+    if (receiverIsNuban) {
+      try {
+        const freshReceiverRes = await axios.get(`${process.env.XPRESS_BASE_URL}/wallet/customer`, {
           params: { customerId: receiverCustomerId },
           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
-        }),
-      ]);
-      if (freshSenderRes.data?.wallet?.availableBalance !== undefined) {
-        newSenderBalance = Number(freshSenderRes.data.wallet.availableBalance);
+          timeout: 15000
+        });
+        if (freshReceiverRes.data?.wallet?.availableBalance !== undefined) {
+           newReceiverFirestoreBalance = Number(freshReceiverRes.data.wallet.availableBalance);
+        }
+      } catch (err) {
+        console.warn("Could not fetch fresh receiver balance:", err.message);
       }
-      if (freshReceiverRes.data?.wallet?.availableBalance !== undefined) {
-        newReceiverBalance = Number(freshReceiverRes.data.wallet.availableBalance);
-      }
-    } catch (refreshError) {
-      console.warn("Could not refresh balances after scan transfer:", refreshError.message);
+    } else {
+      const currentReceiverBalance = Number(receiverCardData.balance || 0);
+      newReceiverFirestoreBalance = currentReceiverBalance + transferAmount;
     }
 
-    // =====================================================
-    // 9. LOG TRANSACTIONS IN FIRESTORE
-    // =====================================================
+    // Log Transactions in Firestore
     const batch = db.batch();
 
-    // Sender's transaction log
     batch.set(
       senderUserRef.collection("Transactions").doc(reference),
       {
@@ -10280,15 +11615,15 @@ app.post("/transfer-scan", async (req, res) => {
         senderCustomerId,
         receiverPhone,
         receiverCardNumber,
-        receiverCustomerId,
+        receiverCustomerId: receiverCustomerId || null,
         transactionNo: reference,
         reference,
         xpressReference,
+        transferType,
         date: admin.firestore.FieldValue.serverTimestamp(),
       }
     );
 
-    // Receiver's transaction log
     batch.set(
       receiverUserRef.collection("Transactions").doc(reference),
       {
@@ -10296,8 +11631,8 @@ app.post("/transfer-scan", async (req, res) => {
         provider: "xpress",
         status: "receiver",
         amount: transferAmount,
-        balanceAfter: newReceiverBalance,
-        balanceType: "xpress_wallet",
+        balanceAfter: newReceiverFirestoreBalance,
+        balanceType: receiverIsNuban ? "xpress_wallet" : "firestore_wallet",
         cardNumber: receiverCardNumber,
         cardType: receiverCardData.cardType || "wallet",
         paymentMethod: "scan",
@@ -10307,15 +11642,22 @@ app.post("/transfer-scan", async (req, res) => {
         senderCardNumber,
         senderCustomerId,
         receiverPhone,
-        receiverCustomerId,
+        receiverCustomerId: receiverCustomerId || null,
         transactionNo: reference,
         reference,
         xpressReference,
+        transferType,
         date: admin.firestore.FieldValue.serverTimestamp(),
       }
     );
 
-    // Global transaction log
+    if (!receiverIsNuban) {
+      batch.update(receiverCardRef, {
+        balance: newReceiverFirestoreBalance,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
     batch.set(txnRef, {
       type: "WalletToWallet",
       provider: "xpress",
@@ -10325,6 +11667,7 @@ app.post("/transfer-scan", async (req, res) => {
       xpressReference,
       paymentMethod: "scan",
       status: "success",
+      transferType,
       sender: {
         phone: senderPhone,
         cardId: senderCardNumber,
@@ -10335,22 +11678,21 @@ app.post("/transfer-scan", async (req, res) => {
       receiver: {
         phone: receiverPhone,
         cardId: receiverCardNumber,
-        customerId: receiverCustomerId,
+        customerId: receiverCustomerId || null,
         firstname: receiverData.firstName || receiverData.firstname || "",
         lastname: receiverData.lastName || receiverData.lastname || "",
       },
       senderBalanceAfter: newSenderBalance,
-      receiverBalanceAfter: newReceiverBalance,
+      receiverBalanceAfter: newReceiverFirestoreBalance,
       xpressData,
       date: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Ledger entry (audit)
     batch.set(
       db.collection("TransfrLedger").doc(reference),
       {
         reference,
-        type: "xpress_wallet_to_wallet_scan",
+        type: transferType,
         provider: "xpress",
         amount: transferAmount,
         senderPhone,
@@ -10358,28 +11700,21 @@ app.post("/transfer-scan", async (req, res) => {
         senderCardId: senderCardNumber,
         receiverCardId: receiverCardNumber,
         senderCustomerId,
-        receiverCustomerId,
+        receiverCustomerId: receiverCustomerId || null,
         senderBalanceAfter: newSenderBalance,
-        receiverBalanceAfter: newReceiverBalance,
+        receiverBalanceAfter: newReceiverFirestoreBalance,
         xpressReference,
         status: "success",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       }
     );
 
-    // Notification flags
     batch.set(senderUserRef, { notification: true }, { merge: true });
-    batch.set(
-      receiverUserRef,
-      { notification: true, inappnotification: true },
-      { merge: true }
-    );
+    batch.set(receiverUserRef, { notification: true, inappnotification: true }, { merge: true });
 
     await batch.commit();
 
-    // =====================================================
-    // 10. PUSH NOTIFICATION TO RECEIVER
-    // =====================================================
+    // Push Notification
     const receiverToken = receiverData?.fcm;
     if (receiverToken) {
       try {
@@ -10400,9 +11735,7 @@ app.post("/transfer-scan", async (req, res) => {
       }
     }
 
-    // =====================================================
-    // 11. SUCCESS RESPONSE
-    // =====================================================
+    // Success Response
     return res.status(200).json({
       success: true,
       message: "Transfer successful",
@@ -10413,13 +11746,13 @@ app.post("/transfer-scan", async (req, res) => {
         senderPhone,
         senderCustomerId,
         receiverPhone,
-        receiverCustomerId,
+        receiverCustomerId: receiverCustomerId || null,
         senderCardId: senderCardNumber,
         receiverCardId: receiverCardNumber,
         senderBalanceAfter: newSenderBalance,
-        receiverBalanceAfter: newReceiverBalance,
+        receiverBalanceAfter: newReceiverFirestoreBalance,
         status: "success",
-        transferType: "xpress_wallet_to_wallet_scan",
+        transferType,
       },
     });
 
@@ -10431,6 +11764,395 @@ app.post("/transfer-scan", async (req, res) => {
     });
   }
 });
+
+// app.post("/ticket-scan", async (req, res) => {
+//   try {
+//     const {
+//       redeemerPhone,
+//       merchantPhone,
+//       ticketCardNumber,
+//       merchantCardNumber,
+//       amount,
+//       transactionNo,
+//       businessType,
+//       merchantname,
+//       merchantLastname,
+//       redeemerFirstname,
+//       redeemerLastname,
+//     } = req.body;
+
+//     const ticketAmount = Number(amount);
+//     const reference = transactionNo;
+
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     if (ticketAmount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid amount",
+//       });
+//     }
+
+//     // =====================================================
+//     // 2. FIRESTORE REFERENCES
+//     // =====================================================
+//     const redeemerUserRef = db.collection("users").doc(redeemerPhone);
+//     const merchantUserRef = db.collection("users").doc(merchantPhone);
+
+//     const ticketRef = redeemerUserRef.collection("tickets").doc(ticketCardNumber);
+//     const merchantCardRef = merchantUserRef.collection("Cards").doc(merchantCardNumber);
+
+//     const txnRef = db.collection("AllTransaction").doc(reference);
+
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction detected",
+//       });
+//     }
+
+//     // =====================================================
+//     // 4. FETCH REDEEMER, MERCHANT, TICKET, MERCHANT CARD
+//     // =====================================================
+//     const [ticketSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
+//       ticketRef.get(),
+//       merchantCardRef.get(),
+//       merchantUserRef.get(),
+//     ]);
+
+//     if (!ticketSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Ticket not found" });
+//     }
+//     if (!merchantUserSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant not found" });
+//     }
+//     if (!merchantCardSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant card not found" });
+//     }
+
+//     const ticketData = ticketSnap.data();
+//     const merchantUserData = merchantUserSnap.data();
+//     const merchantCardData = merchantCardSnap.data();
+
+//     const ticketBalance = Number(ticketData.balance || 0);
+//     if (ticketBalance < ticketAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient ticket balance",
+//         available: ticketBalance,
+//       });
+//     }
+
+//     // =====================================================
+//     // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
+//     // =====================================================
+//     const merchantCustomerId =
+//       merchantCardData?.xpress?.customerId ||
+//       merchantUserData?.xpress?.customerId ||
+//       merchantUserData?.xpressMerchant?.customerId ||
+//       merchantUserData?.xpressWallet?.customerId;
+
+//     if (!merchantCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Merchant does not have an Xpress wallet configured",
+//       });
+//     }
+
+//     // =====================================================
+//     // 6. CREDIT MERCHANT'S XPRESS WALLET
+//     // =====================================================
+//     // Platform's Xpress merchant wallet debits → merchant's Xpress wallet credits
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+//         {
+//           amount: ticketAmount,
+//           reference,
+//           customerId: merchantCustomerId,
+//           metadata: {
+//             firebaseUserId: merchantPhone,
+//             redeemerPhone,
+//             ticketCardNumber,
+//             merchantCardNumber,
+//             businessType: businessType || "ticket",
+//             purpose: "ticket_redemption",
+//             source: "transfr_app",
+//           },
+//         },
+//         {
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error(
+//         "XPRESS CREDIT ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
+
+//       // Log failed attempt for audit
+//       await txnRef.set({
+//         type: "TicketRedemption",
+//         provider: "xpress",
+//         amount: ticketAmount,
+//         status: "failed",
+//         failureReason:
+//           xpressError.response?.data?.message || xpressError.message,
+//         redeemer: {
+//           phone: redeemerPhone,
+//           ticketCardNumber,
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//         },
+//         reference,
+//         paymentMethod: "ticket",
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           xpressError.response?.data?.message ||
+//           "Failed to credit merchant's Xpress wallet",
+//         xpress: xpressError.response?.data || null,
+//       });
+//     }
+
+//     // Verify Xpress success
+//     if (!xpressResponse.data || xpressResponse.data.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressResponse.data?.message || "Xpress credit failed",
+//         xpress: xpressResponse.data,
+//       });
+//     }
+
+//     const xpressReference =
+//       xpressResponse.data?.reference ||
+//       xpressResponse.data?.transactionReference ||
+//       xpressResponse.data?.transactionId ||
+//       reference;
+
+//     console.log("✅ Xpress ticket redemption credit success:", xpressResponse.data);
+
+//     // =====================================================
+//     // 7. FETCH FRESH MERCHANT BALANCE (for logging)
+//     // =====================================================
+//     let newMerchantWalletBalance = null;
+//     try {
+//       const freshRes = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: merchantCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//         }
+//       );
+//       if (freshRes.data?.wallet?.availableBalance !== undefined) {
+//         newMerchantWalletBalance = Number(freshRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn("Could not refresh merchant balance:", refreshError.message);
+//     }
+
+//     // =====================================================
+//     // 8. FIRESTORE TRANSACTION
+//     // =====================================================
+//     let newTicketBalance = 0;
+
+//     await db.runTransaction(async (tx) => {
+//       // Re-read ticket to get latest balance
+//       const freshTicketSnap = await tx.get(ticketRef);
+//       if (!freshTicketSnap.exists) throw new Error("Ticket not found");
+
+//       const freshTicketData = freshTicketSnap.data();
+//       const latestTicketBalance = Number(freshTicketData.balance || 0);
+//       if (latestTicketBalance < ticketAmount) {
+//         throw new Error("Insufficient ticket balance");
+//       }
+
+//       newTicketBalance = latestTicketBalance - ticketAmount;
+
+//       // 1. Deduct ticket balance (Firestore is authoritative for tickets)
+//       tx.update(ticketRef, {
+//         balance: newTicketBalance,
+//         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 2. Notification flags
+//       tx.set(redeemerUserRef, { notification: true }, { merge: true });
+//       tx.set(
+//         merchantUserRef,
+//         { notification: true, inappnotification: true },
+//         { merge: true }
+//       );
+
+//       // 3. Redeemer transaction log
+//       tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
+//         type: "TicketRedemption",
+//         provider: "xpress",
+//         status: "ticket",
+//         amount: ticketAmount,
+//         balance: newTicketBalance,
+//         balanceBefore: latestTicketBalance,
+//         balanceType: "ticket",
+//         cardNumber: ticketCardNumber,
+//         cardType: "ticket",
+//         paymentMethod: "ticket",
+//         businessType: businessType || "ticket",
+//         transactionNo: reference,
+//         reference,
+//         merchantPhone,
+//         merchantCardNumber,
+//         merchantCustomerId,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 4. Merchant transaction log
+//       tx.set(merchantUserRef.collection("Transactions").doc(reference), {
+//         type: "TicketRedemptionReceived",
+//         provider: "xpress",
+//         status: "merchant",
+//         amount: ticketAmount,
+//         balance: newMerchantWalletBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: merchantCardNumber,
+//         cardType: merchantCardData.cardType || "merchant",
+//         paymentMethod: "ticket",
+//         businessType: businessType || "ticket",
+//         transactionNo: reference,
+//         reference,
+//         redeemerPhone,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         merchantCustomerId,
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 5. Global transaction log
+//       tx.set(txnRef, {
+//         type: "TicketRedemption",
+//         provider: "xpress",
+//         amount: ticketAmount,
+//         businessType: businessType || "ticket",
+//         cardType: "ticket",
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         paymentMethod: "ticket",
+//         status: "success",
+//         redeemer: {
+//           phone: redeemerPhone,
+//           ticketCardNumber,
+//           firstname: redeemerFirstname || "",
+//           lastname: redeemerLastname || "",
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//           firstname: merchantname || "",
+//           lastname: merchantLastname || "",
+//         },
+//         ticketBalanceAfter: newTicketBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressData: xpressResponse.data,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 6. Ledger entry (audit)
+//       tx.set(db.collection("TransfrLedger").doc(reference), {
+//         reference,
+//         type: "ticket_redemption_to_xpress_wallet",
+//         provider: "xpress",
+//         amount: ticketAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         ticketCardId: ticketCardNumber,
+//         merchantCardId: merchantCardNumber,
+//         merchantCustomerId,
+//         ticketBalanceBefore: latestTicketBalance,
+//         ticketBalanceAfter: newTicketBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressReference,
+//         status: "success",
+//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//     });
+
+//     // =====================================================
+//     // 9. PUSH NOTIFICATION TO MERCHANT
+//     // =====================================================
+//     const merchantToken = merchantUserData?.fcm;
+//     if (merchantToken) {
+//       try {
+//         await messaging.send({
+//           token: merchantToken,
+//           notification: {
+//             title: "Ticket Redeemed 🎫",
+//             body: `₦${ticketAmount.toLocaleString()} received from ${redeemerFirstname || redeemerPhone}`,
+//           },
+//           data: {
+//             type: "ticket_redemption",
+//             transactionNo: reference,
+//             amount: ticketAmount.toString(),
+//           },
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError);
+//       }
+//     }
+
+//     // =====================================================
+//     // 10. SUCCESS RESPONSE
+//     // =====================================================
+//     return res.status(200).json({
+//       success: true,
+//       message: "Ticket redeemed and merchant wallet credited",
+//       data: {
+//         transactionNo: reference,
+//         xpressReference,
+//         amount: ticketAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         merchantCustomerId,
+//         ticketBalanceAfter: newTicketBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         status: "success",
+//         transferType: "ticket_redemption",
+//       },
+//     });
+
+//   } catch (error) {
+//     console.error("Redeem ticket error:", error.response?.data || error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Ticket redemption failed",
+//     });
+//   }
+// });
 
 app.post("/ticket-scan", async (req, res) => {
   try {
@@ -10491,7 +12213,7 @@ app.post("/ticket-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 4. FETCH REDEEMER, MERCHANT, TICKET, MERCHANT CARD
+    // 4. FETCH DATA
     // =====================================================
     const [ticketSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
       ticketRef.get(),
@@ -10499,15 +12221,9 @@ app.post("/ticket-scan", async (req, res) => {
       merchantUserRef.get(),
     ]);
 
-    if (!ticketSnap.exists) {
-      return res.status(404).json({ success: false, message: "Ticket not found" });
-    }
-    if (!merchantUserSnap.exists) {
-      return res.status(404).json({ success: false, message: "Merchant not found" });
-    }
-    if (!merchantCardSnap.exists) {
-      return res.status(404).json({ success: false, message: "Merchant card not found" });
-    }
+    if (!ticketSnap.exists) return res.status(404).json({ success: false, message: "Ticket not found" });
+    if (!merchantUserSnap.exists) return res.status(404).json({ success: false, message: "Merchant not found" });
+    if (!merchantCardSnap.exists) return res.status(404).json({ success: false, message: "Merchant card not found" });
 
     const ticketData = ticketSnap.data();
     const merchantUserData = merchantUserSnap.data();
@@ -10525,6 +12241,7 @@ app.post("/ticket-scan", async (req, res) => {
     // =====================================================
     // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
     // =====================================================
+    // We just need the customerId. No Nuban check required.
     const merchantCustomerId =
       merchantCardData?.xpress?.customerId ||
       merchantUserData?.xpress?.customerId ||
@@ -10534,14 +12251,13 @@ app.post("/ticket-scan", async (req, res) => {
     if (!merchantCustomerId) {
       return res.status(400).json({
         success: false,
-        message: "Merchant does not have an Xpress wallet configured",
+        message: "Merchant does not have an Xpress wallet configured to receive funds.",
       });
     }
 
     // =====================================================
     // 6. CREDIT MERCHANT'S XPRESS WALLET
     // =====================================================
-    // Platform's Xpress merchant wallet debits → merchant's Xpress wallet credits
     let xpressResponse;
     try {
       xpressResponse = await axios.post(
@@ -10565,13 +12281,11 @@ app.post("/ticket-scan", async (req, res) => {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json',
           },
+          timeout: 20000 // 👈 Added timeout
         }
       );
     } catch (xpressError) {
-      console.error(
-        "XPRESS CREDIT ERROR:",
-        xpressError.response?.data || xpressError.message
-      );
+      console.error("XPRESS CREDIT ERROR:", xpressError.response?.data || xpressError.message);
 
       // Log failed attempt for audit
       await txnRef.set({
@@ -10579,17 +12293,9 @@ app.post("/ticket-scan", async (req, res) => {
         provider: "xpress",
         amount: ticketAmount,
         status: "failed",
-        failureReason:
-          xpressError.response?.data?.message || xpressError.message,
-        redeemer: {
-          phone: redeemerPhone,
-          ticketCardNumber,
-        },
-        merchant: {
-          phone: merchantPhone,
-          cardId: merchantCardNumber,
-          customerId: merchantCustomerId,
-        },
+        failureReason: xpressError.response?.data?.message || xpressError.message,
+        redeemer: { phone: redeemerPhone, ticketCardNumber },
+        merchant: { phone: merchantPhone, cardId: merchantCardNumber, customerId: merchantCustomerId },
         reference,
         paymentMethod: "ticket",
         date: admin.firestore.FieldValue.serverTimestamp(),
@@ -10597,29 +12303,22 @@ app.post("/ticket-scan", async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message:
-          xpressError.response?.data?.message ||
-          "Failed to credit merchant's Xpress wallet",
+        message: xpressError.response?.data?.message || "Failed to credit merchant's Xpress wallet",
         xpress: xpressError.response?.data || null,
       });
     }
 
-    // Verify Xpress success
-    if (!xpressResponse.data || xpressResponse.data.status === false) {
+    const xpressData = xpressResponse.data;
+    if (!xpressData || xpressData.status === false) {
       return res.status(400).json({
         success: false,
-        message: xpressResponse.data?.message || "Xpress credit failed",
-        xpress: xpressResponse.data,
+        message: xpressData?.message || "Xpress credit failed",
       });
     }
 
-    const xpressReference =
-      xpressResponse.data?.reference ||
-      xpressResponse.data?.transactionReference ||
-      xpressResponse.data?.transactionId ||
-      reference;
+    const xpressReference = xpressData?.reference || xpressData?.transactionReference || reference;
 
-    console.log("✅ Xpress ticket redemption credit success:", xpressResponse.data);
+    console.log("✅ Xpress ticket redemption credit success:", xpressData);
 
     // =====================================================
     // 7. FETCH FRESH MERCHANT BALANCE (for logging)
@@ -10631,6 +12330,7 @@ app.post("/ticket-scan", async (req, res) => {
         {
           params: { customerId: merchantCustomerId },
           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000 // 👈 Added timeout
         }
       );
       if (freshRes.data?.wallet?.availableBalance !== undefined) {
@@ -10641,24 +12341,21 @@ app.post("/ticket-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 8. FIRESTORE TRANSACTION
+    // 8. FIRESTORE TRANSACTION (Deduct Ticket)
     // =====================================================
     let newTicketBalance = 0;
 
     await db.runTransaction(async (tx) => {
-      // Re-read ticket to get latest balance
       const freshTicketSnap = await tx.get(ticketRef);
       if (!freshTicketSnap.exists) throw new Error("Ticket not found");
 
       const freshTicketData = freshTicketSnap.data();
       const latestTicketBalance = Number(freshTicketData.balance || 0);
-      if (latestTicketBalance < ticketAmount) {
-        throw new Error("Insufficient ticket balance");
-      }
+      if (latestTicketBalance < ticketAmount) throw new Error("Insufficient ticket balance");
 
       newTicketBalance = latestTicketBalance - ticketAmount;
 
-      // 1. Deduct ticket balance (Firestore is authoritative for tickets)
+      // 1. Deduct ticket balance
       tx.update(ticketRef, {
         balance: newTicketBalance,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -10666,11 +12363,7 @@ app.post("/ticket-scan", async (req, res) => {
 
       // 2. Notification flags
       tx.set(redeemerUserRef, { notification: true }, { merge: true });
-      tx.set(
-        merchantUserRef,
-        { notification: true, inappnotification: true },
-        { merge: true }
-      );
+      tx.set(merchantUserRef, { notification: true, inappnotification: true }, { merge: true });
 
       // 3. Redeemer transaction log
       tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
@@ -10745,11 +12438,11 @@ app.post("/ticket-scan", async (req, res) => {
         },
         ticketBalanceAfter: newTicketBalance,
         merchantBalanceAfter: newMerchantWalletBalance,
-        xpressData: xpressResponse.data,
+        xpressData: xpressData,
         date: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // 6. Ledger entry (audit)
+      // 6. Ledger entry
       tx.set(db.collection("TransfrLedger").doc(reference), {
         reference,
         type: "ticket_redemption_to_xpress_wallet",
@@ -10820,6 +12513,395 @@ app.post("/ticket-scan", async (req, res) => {
     });
   }
 });
+
+// app.post("/voucher-scan", async (req, res) => {
+//   try {
+//     const {
+//       redeemerPhone,
+//       merchantPhone,
+//       voucherCardNumber,
+//       merchantCardNumber,
+//       amount,
+//       transactionNo,
+//       businessType,
+//       merchantname,
+//       merchantLastname,
+//       redeemerFirstname,
+//       redeemerLastname,
+//     } = req.body;
+
+//     const redeemAmount = Number(amount);
+//     const reference = transactionNo;
+
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     if (redeemAmount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid amount",
+//       });
+//     }
+
+//     // =====================================================
+//     // 2. FIRESTORE REFERENCES
+//     // =====================================================
+//     const redeemerUserRef = db.collection("users").doc(redeemerPhone);
+//     const merchantUserRef = db.collection("users").doc(merchantPhone);
+
+//     const voucherRef = redeemerUserRef.collection("voucher").doc(voucherCardNumber);
+//     const merchantCardRef = merchantUserRef.collection("Cards").doc(merchantCardNumber);
+
+//     const txnRef = db.collection("AllTransaction").doc(reference);
+
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction detected",
+//       });
+//     }
+
+//     // =====================================================
+//     // 4. FETCH REDEEMER, MERCHANT, VOUCHER, MERCHANT CARD
+//     // =====================================================
+//     const [voucherSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
+//       voucherRef.get(),
+//       merchantCardRef.get(),
+//       merchantUserRef.get(),
+//     ]);
+
+//     if (!voucherSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Voucher not found" });
+//     }
+//     if (!merchantUserSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant not found" });
+//     }
+//     if (!merchantCardSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant card not found" });
+//     }
+
+//     const voucherData = voucherSnap.data();
+//     const merchantUserData = merchantUserSnap.data();
+//     const merchantCardData = merchantCardSnap.data();
+
+//     const voucherBalance = Number(voucherData.balance || 0);
+//     if (voucherBalance < redeemAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient voucher balance",
+//         available: voucherBalance,
+//       });
+//     }
+
+//     // =====================================================
+//     // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
+//     // =====================================================
+//     const merchantCustomerId =
+//       merchantCardData?.xpress?.customerId ||
+//       merchantUserData?.xpress?.customerId ||
+//       merchantUserData?.xpressMerchant?.customerId ||
+//       merchantUserData?.xpressWallet?.customerId;
+
+//     if (!merchantCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Merchant does not have an Xpress wallet configured",
+//       });
+//     }
+
+//     // =====================================================
+//     // 6. CREDIT MERCHANT'S XPRESS WALLET
+//     // =====================================================
+//     // Platform's Xpress merchant wallet debits → merchant's Xpress wallet credits
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+//         {
+//           amount: redeemAmount,
+//           reference,
+//           customerId: merchantCustomerId,
+//           metadata: {
+//             firebaseUserId: merchantPhone,
+//             redeemerPhone,
+//             voucherCardNumber,
+//             merchantCardNumber,
+//             businessType: businessType || "voucher",
+//             purpose: "voucher_redemption",
+//             source: "transfr_app",
+//           },
+//         },
+//         {
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error(
+//         "XPRESS CREDIT ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
+
+//       // Log failed attempt for audit
+//       await txnRef.set({
+//         type: "VoucherRedemption",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         status: "failed",
+//         failureReason:
+//           xpressError.response?.data?.message || xpressError.message,
+//         redeemer: {
+//           phone: redeemerPhone,
+//           voucherCardNumber,
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//         },
+//         reference,
+//         paymentMethod: "voucher",
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           xpressError.response?.data?.message ||
+//           "Failed to credit merchant's Xpress wallet",
+//         xpress: xpressError.response?.data || null,
+//       });
+//     }
+
+//     // Verify Xpress success
+//     if (!xpressResponse.data || xpressResponse.data.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressResponse.data?.message || "Xpress credit failed",
+//         xpress: xpressResponse.data,
+//       });
+//     }
+
+//     const xpressReference =
+//       xpressResponse.data?.reference ||
+//       xpressResponse.data?.transactionReference ||
+//       xpressResponse.data?.transactionId ||
+//       reference;
+
+//     console.log("✅ Xpress voucher redemption credit success:", xpressResponse.data);
+
+//     // =====================================================
+//     // 7. FETCH FRESH MERCHANT BALANCE (for logging)
+//     // =====================================================
+//     let newMerchantWalletBalance = null;
+//     try {
+//       const freshRes = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: merchantCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//         }
+//       );
+//       if (freshRes.data?.wallet?.availableBalance !== undefined) {
+//         newMerchantWalletBalance = Number(freshRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn("Could not refresh merchant balance:", refreshError.message);
+//     }
+
+//     // =====================================================
+//     // 8. FIRESTORE TRANSACTION
+//     // =====================================================
+//     let newVoucherBalance = 0;
+
+//     await db.runTransaction(async (tx) => {
+//       // Re-read voucher to get latest balance
+//       const freshVoucherSnap = await tx.get(voucherRef);
+//       if (!freshVoucherSnap.exists) throw new Error("Voucher not found");
+
+//       const freshVoucherData = freshVoucherSnap.data();
+//       const latestVoucherBalance = Number(freshVoucherData.balance || 0);
+//       if (latestVoucherBalance < redeemAmount) {
+//         throw new Error("Insufficient voucher balance");
+//       }
+
+//       newVoucherBalance = latestVoucherBalance - redeemAmount;
+
+//       // 1. Deduct voucher balance (Firestore is authoritative for vouchers)
+//       tx.update(voucherRef, {
+//         balance: newVoucherBalance,
+//         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 2. Notification flags
+//       tx.set(redeemerUserRef, { notification: true }, { merge: true });
+//       tx.set(
+//         merchantUserRef,
+//         { notification: true, inappnotification: true },
+//         { merge: true }
+//       );
+
+//       // 3. Redeemer transaction log
+//       tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
+//         type: "VoucherRedemption",
+//         provider: "xpress",
+//         status: "redeem",
+//         amount: redeemAmount,
+//         balance: newVoucherBalance,
+//         balanceBefore: latestVoucherBalance,
+//         balanceType: "voucher",
+//         cardNumber: voucherCardNumber,
+//         cardType: "voucher",
+//         paymentMethod: "voucher",
+//         businessType: businessType || "voucher",
+//         transactionNo: reference,
+//         reference,
+//         merchantPhone,
+//         merchantCardNumber,
+//         merchantCustomerId,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 4. Merchant transaction log
+//       tx.set(merchantUserRef.collection("Transactions").doc(reference), {
+//         type: "VoucherRedemptionReceived",
+//         provider: "xpress",
+//         status: "merchant",
+//         amount: redeemAmount,
+//         balance: newMerchantWalletBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: merchantCardNumber,
+//         cardType: merchantCardData.cardType || "merchant",
+//         paymentMethod: "voucher",
+//         businessType: businessType || "voucher",
+//         transactionNo: reference,
+//         reference,
+//         redeemerPhone,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         merchantCustomerId,
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 5. Global transaction log
+//       tx.set(txnRef, {
+//         type: "VoucherRedemption",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         businessType: businessType || "voucher",
+//         cardType: "voucher",
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         paymentMethod: "voucher",
+//         status: "success",
+//         redeemer: {
+//           phone: redeemerPhone,
+//           voucherCardNumber,
+//           firstname: redeemerFirstname || "",
+//           lastname: redeemerLastname || "",
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//           firstname: merchantname || "",
+//           lastname: merchantLastname || "",
+//         },
+//         voucherBalanceAfter: newVoucherBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressData: xpressResponse.data,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 6. Ledger entry (audit)
+//       tx.set(db.collection("TransfrLedger").doc(reference), {
+//         reference,
+//         type: "voucher_redemption_to_xpress_wallet",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         voucherCardId: voucherCardNumber,
+//         merchantCardId: merchantCardNumber,
+//         merchantCustomerId,
+//         voucherBalanceBefore: latestVoucherBalance,
+//         voucherBalanceAfter: newVoucherBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressReference,
+//         status: "success",
+//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//     });
+
+//     // =====================================================
+//     // 9. PUSH NOTIFICATION TO MERCHANT
+//     // =====================================================
+//     const merchantToken = merchantUserData?.fcm;
+//     if (merchantToken) {
+//       try {
+//         await messaging.send({
+//           token: merchantToken,
+//           notification: {
+//             title: "Voucher Redeemed 🎟️",
+//             body: `₦${redeemAmount.toLocaleString()} received from ${redeemerFirstname || redeemerPhone}`,
+//           },
+//           data: {
+//             type: "voucher_redemption",
+//             transactionNo: reference,
+//             amount: redeemAmount.toString(),
+//           },
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError);
+//       }
+//     }
+
+//     // =====================================================
+//     // 10. SUCCESS RESPONSE
+//     // =====================================================
+//     return res.status(200).json({
+//       success: true,
+//       message: "Voucher redeemed and merchant wallet credited",
+//       data: {
+//         transactionNo: reference,
+//         xpressReference,
+//         amount: redeemAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         merchantCustomerId,
+//         voucherBalanceAfter: newVoucherBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         status: "success",
+//         transferType: "voucher_redemption",
+//       },
+//     });
+
+//   } catch (error) {
+//     console.error("Redeem voucher error:", error.response?.data || error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Voucher redemption failed",
+//     });
+//   }
+// });
 
 app.post("/voucher-scan", async (req, res) => {
   try {
@@ -10954,6 +13036,7 @@ app.post("/voucher-scan", async (req, res) => {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json',
           },
+          timeout: 20000 // 👈 Added timeout
         }
       );
     } catch (xpressError) {
@@ -11002,13 +13085,14 @@ app.post("/voucher-scan", async (req, res) => {
       });
     }
 
+    const xpressData = xpressResponse.data;
     const xpressReference =
-      xpressResponse.data?.reference ||
-      xpressResponse.data?.transactionReference ||
-      xpressResponse.data?.transactionId ||
+      xpressData?.reference ||
+      xpressData?.transactionReference ||
+      xpressData?.transactionId ||
       reference;
 
-    console.log("✅ Xpress voucher redemption credit success:", xpressResponse.data);
+    console.log("✅ Xpress voucher redemption credit success:", xpressData);
 
     // =====================================================
     // 7. FETCH FRESH MERCHANT BALANCE (for logging)
@@ -11020,6 +13104,7 @@ app.post("/voucher-scan", async (req, res) => {
         {
           params: { customerId: merchantCustomerId },
           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000 // 👈 Added timeout
         }
       );
       if (freshRes.data?.wallet?.availableBalance !== undefined) {
@@ -11134,7 +13219,7 @@ app.post("/voucher-scan", async (req, res) => {
         },
         voucherBalanceAfter: newVoucherBalance,
         merchantBalanceAfter: newMerchantWalletBalance,
-        xpressData: xpressResponse.data,
+        xpressData: xpressData, // Use the saved variable here
         date: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -11209,6 +13294,409 @@ app.post("/voucher-scan", async (req, res) => {
     });
   }
 });
+
+// app.post("/health-scan", async (req, res) => {
+//   try {
+//     const {
+//       redeemerPhone,
+//       merchantPhone,
+//       voucherCardNumber,
+//       merchantCardNumber,
+//       amount,
+//       transactionNo,
+//       businessType,
+//       merchantname,
+//       merchantLastname,
+//       redeemerFirstname,
+//       redeemerLastname,
+//     } = req.body;
+
+//     const redeemAmount = Number(amount);
+//     const reference = transactionNo;
+
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     if (redeemAmount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid amount",
+//       });
+//     }
+
+//     // =====================================================
+//     // 2. FIRESTORE REFERENCES
+//     // =====================================================
+//     const redeemerUserRef = db.collection("users").doc(redeemerPhone);
+//     const merchantUserRef = db.collection("users").doc(merchantPhone);
+
+//     const healthRef = redeemerUserRef.collection("health").doc(voucherCardNumber);
+//     const merchantCardRef = merchantUserRef.collection("Cards").doc(merchantCardNumber);
+
+//     const txnRef = db.collection("AllTransaction").doc(reference);
+
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction detected",
+//       });
+//     }
+
+//     // =====================================================
+//     // 4. FETCH REDEEMER, MERCHANT, HEALTH CARD, MERCHANT CARD
+//     // =====================================================
+//     const [healthSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
+//       healthRef.get(),
+//       merchantCardRef.get(),
+//       merchantUserRef.get(),
+//     ]);
+
+//     if (!healthSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Health card not found" });
+//     }
+//     if (!merchantUserSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant not found" });
+//     }
+//     if (!merchantCardSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant card not found" });
+//     }
+
+//     const healthData = healthSnap.data();
+//     const merchantUserData = merchantUserSnap.data();
+//     const merchantCardData = merchantCardSnap.data();
+
+//     const healthBalance = Number(healthData.balance || 0);
+//     if (healthBalance < redeemAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient health balance",
+//         available: healthBalance,
+//       });
+//     }
+
+//     // =====================================================
+//     // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
+//     // =====================================================
+//     const merchantCustomerId =
+//       merchantCardData?.xpress?.customerId ||
+//       merchantUserData?.xpress?.customerId ||
+//       merchantUserData?.xpressMerchant?.customerId ||
+//       merchantUserData?.xpressWallet?.customerId;
+
+//     if (!merchantCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Merchant does not have an Xpress wallet configured",
+//       });
+//     }
+
+//     // =====================================================
+//     // 6. CREDIT MERCHANT'S XPRESS WALLET
+//     // =====================================================
+//     // Platform's Xpress merchant wallet debits → merchant's Xpress wallet credits
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+//         {
+//           amount: redeemAmount,
+//           reference,
+//           customerId: merchantCustomerId,
+//           metadata: {
+//             firebaseUserId: merchantPhone,
+//             redeemerPhone,
+//             voucherCardNumber,
+//             merchantCardNumber,
+//             businessType: businessType || "health",
+//             purpose: "health_redemption",
+//             source: "transfr_app",
+//           },
+//         },
+//         {
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error(
+//         "XPRESS CREDIT ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
+
+//       // Log failed attempt for audit
+//       await txnRef.set({
+//         type: "HealthRedemption",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         status: "failed",
+//         failureReason:
+//           xpressError.response?.data?.message || xpressError.message,
+//         redeemer: {
+//           phone: redeemerPhone,
+//           healthCardNumber: voucherCardNumber,
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//         },
+//         reference,
+//         paymentMethod: "health",
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           xpressError.response?.data?.message ||
+//           "Failed to credit merchant's Xpress wallet",
+//         xpress: xpressError.response?.data || null,
+//       });
+//     }
+
+//     // Verify Xpress success
+//     if (!xpressResponse.data || xpressResponse.data.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressResponse.data?.message || "Xpress credit failed",
+//         xpress: xpressResponse.data,
+//       });
+//     }
+
+//     const xpressReference =
+//       xpressResponse.data?.reference ||
+//       xpressResponse.data?.transactionReference ||
+//       xpressResponse.data?.transactionId ||
+//       reference;
+
+//     console.log("✅ Xpress health redemption credit success:", xpressResponse.data);
+
+//     // =====================================================
+//     // 7. FETCH FRESH MERCHANT BALANCE (for logging)
+//     // =====================================================
+//     let newMerchantWalletBalance = null;
+//     try {
+//       const freshRes = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: merchantCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//         }
+//       );
+//       if (freshRes.data?.wallet?.availableBalance !== undefined) {
+//         newMerchantWalletBalance = Number(freshRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn("Could not refresh merchant balance:", refreshError.message);
+//     }
+
+//     // =====================================================
+//     // 8. FIRESTORE TRANSACTION
+//     // =====================================================
+//     let newHealthBalance = 0;
+
+//     await db.runTransaction(async (tx) => {
+//       // Re-read health card to get latest balance
+//       const freshHealthSnap = await tx.get(healthRef);
+//       if (!freshHealthSnap.exists) throw new Error("Health card not found");
+
+//       const freshHealthData = freshHealthSnap.data();
+//       const latestHealthBalance = Number(freshHealthData.balance || 0);
+//       if (latestHealthBalance < redeemAmount) {
+//         throw new Error("Insufficient health balance");
+//       }
+
+//       newHealthBalance = latestHealthBalance - redeemAmount;
+
+//       // 1. Deduct health balance (Firestore is authoritative for health cards)
+//       tx.update(healthRef, {
+//         balance: newHealthBalance,
+//         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 2. Notification flags
+//       tx.set(redeemerUserRef, { notification: true }, { merge: true });
+//       tx.set(
+//         merchantUserRef,
+//         { notification: true, inappnotification: true },
+//         { merge: true }
+//       );
+
+//       // 3. Redeemer transaction log
+//       tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
+//         type: "HealthRedemption",
+//         provider: "xpress",
+//         status: "redeem",
+//         amount: redeemAmount,
+//         balance: newHealthBalance,
+//         balanceBefore: latestHealthBalance,
+//         balanceType: "health",
+//         cardNumber: voucherCardNumber,
+//         cardType: "health",
+//         paymentMethod: "scan",
+//         businessType: businessType || "health",
+//         transactionNo: reference,
+//         reference,
+//         merchantPhone,
+//         merchantCardNumber,
+//         merchantCustomerId,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 4. Merchant transaction log
+//       tx.set(merchantUserRef.collection("Transactions").doc(reference), {
+//         type: "HealthRedemptionReceived",
+//         provider: "xpress",
+//         status: "merchant",
+//         amount: redeemAmount,
+//         balance: newMerchantWalletBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: merchantCardNumber,
+//         cardType: merchantCardData.cardType || "merchant",
+//         paymentMethod: "scan",
+//         businessType: businessType || "health",
+//         transactionNo: reference,
+//         reference,
+//         redeemerPhone,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         merchantCustomerId,
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 5. Global transaction log
+//       tx.set(txnRef, {
+//         type: "HealthRedemption",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         businessType: businessType || "health",
+//         cardType: "health",
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         paymentMethod: "scan",
+//         status: "success",
+//         redeemer: {
+//           phone: redeemerPhone,
+//           healthCardNumber: voucherCardNumber,
+//           firstname: redeemerFirstname || "",
+//           lastname: redeemerLastname || "",
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//           firstname: merchantname || "",
+//           lastname: merchantLastname || "",
+//         },
+//         healthBalanceAfter: newHealthBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressData: xpressResponse.data,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       // 6. Ledger entry (audit)
+//       tx.set(db.collection("TransfrLedger").doc(reference), {
+//         reference,
+//         type: "health_redemption_to_xpress_wallet",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         healthCardId: voucherCardNumber,
+//         merchantCardId: merchantCardNumber,
+//         merchantCustomerId,
+//         healthBalanceBefore: latestHealthBalance,
+//         healthBalanceAfter: newHealthBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressReference,
+//         status: "success",
+//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//     });
+
+//     // =====================================================
+//     // 9. PUSH NOTIFICATION TO MERCHANT
+//     // =====================================================
+//     const merchantToken = merchantUserData?.fcm;
+//     if (merchantToken) {
+//       try {
+//         await messaging.send({
+//           token: merchantToken,
+//           notification: {
+//             title: "Health Payment Received 🏥",
+//             body: `₦${redeemAmount.toLocaleString()} received from ${redeemerFirstname || redeemerPhone}`,
+//           },
+//           data: {
+//             type: "health_redemption",
+//             transactionNo: reference,
+//             amount: redeemAmount.toString(),
+//           },
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError);
+//       }
+//     }
+
+//     // =====================================================
+//     // 10. SUCCESS RESPONSE
+//     // =====================================================
+//     return res.status(200).json({
+//       success: true,
+//       message: "Health payment redeemed and merchant wallet credited",
+//       data: {
+//         transactionNo: reference,
+//         xpressReference,
+//         amount: redeemAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         merchantCustomerId,
+//         healthBalanceAfter: newHealthBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         status: "success",
+//         transferType: "health_redemption",
+//       },
+//     });
+
+//   } catch (error) {
+//     console.error("Redeem health error:", error.response?.data || error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Health redemption failed",
+//     });
+//   }
+// });
+
+
+
+// =====================================================
+// IMPORTS (adjust for your setup)
+// =====================================================
+
+
+
+
+// =====================================================
+// ROUTE: /save-giver
+// =====================================================
+
 
 app.post("/health-scan", async (req, res) => {
   try {
@@ -11343,6 +13831,7 @@ app.post("/health-scan", async (req, res) => {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json',
           },
+          timeout: 20000 // 👈 Added timeout
         }
       );
     } catch (xpressError) {
@@ -11391,13 +13880,14 @@ app.post("/health-scan", async (req, res) => {
       });
     }
 
+    const xpressData = xpressResponse.data;
     const xpressReference =
-      xpressResponse.data?.reference ||
-      xpressResponse.data?.transactionReference ||
-      xpressResponse.data?.transactionId ||
+      xpressData?.reference ||
+      xpressData?.transactionReference ||
+      xpressData?.transactionId ||
       reference;
 
-    console.log("✅ Xpress health redemption credit success:", xpressResponse.data);
+    console.log("✅ Xpress health redemption credit success:", xpressData);
 
     // =====================================================
     // 7. FETCH FRESH MERCHANT BALANCE (for logging)
@@ -11409,6 +13899,7 @@ app.post("/health-scan", async (req, res) => {
         {
           params: { customerId: merchantCustomerId },
           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000 // 👈 Added timeout
         }
       );
       if (freshRes.data?.wallet?.availableBalance !== undefined) {
@@ -11523,7 +14014,7 @@ app.post("/health-scan", async (req, res) => {
         },
         healthBalanceAfter: newHealthBalance,
         merchantBalanceAfter: newMerchantWalletBalance,
-        xpressData: xpressResponse.data,
+        xpressData: xpressData,
         date: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -11599,651 +14090,639 @@ app.post("/health-scan", async (req, res) => {
   }
 });
 
-
-
-// =====================================================
-// IMPORTS (adjust for your setup)
-// =====================================================
-
-
-
-
-// =====================================================
-// ROUTE: /save-giver
-// =====================================================
-app.post("/save-giver", async (req, res) => {
-  const date = admin.firestore.FieldValue.serverTimestamp();
-
-  try {
-    const {
-      phonenumber,
-      donorName,
-      hashTag,
-      goodwill,
-      amountCare,
-      beneficiariesCareNum,
-      beneficiariesCare,
-      typesOfgiveawayText2,
-      selectCardCares,
-      transactionNo,
-      religionTextOtherMetrics,
-      genderTextOthermetrics,
-      ageDropDownText,
-      universityText,
-      facultyText,
-      locationText,
-      locationTextStates,
-      textCode,
-      cardtype,
-    } = req.body;
-
-    // =====================================================
-    // 1. VALIDATION
-    // =====================================================
-    if (!phonenumber) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing giver phone number" });
-    }
-    if (!donorName?.trim()) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Enter donor's name" });
-    }
-    if (!hashTag?.trim()) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Enter hashtag" });
-    }
-    if (!goodwill?.trim()) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Enter goodwill message" });
-    }
-    if (
-      beneficiariesCare === "beneficiaries" ||
-      beneficiariesCare === "alanfani" ||
-      beneficiariesCare === "mai anfana" ||
-      beneficiariesCare === "onye na erite uru"
-    ) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Select beneficiaries" });
-    }
-    if (!transactionNo) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing transaction reference" });
-    }
-    if (!cardtype) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing card type" });
-    }
-
-    const recipientCount = Number(beneficiariesCareNum);
-    if (!recipientCount || recipientCount <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid beneficiaries count" });
-    }
-
-    // =====================================================
-    // 2. COMPUTE AMOUNTS
-    // =====================================================
-    const amount = Number(amountCare);
-    if (!amount || amount <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid amount" });
-    }
-
-    const deductedAmount = amount * GIVEAWAY_FEE_RATE;
-    const amountAfterDeduction = amount - deductedAmount;
-    const amountPerUser = amountAfterDeduction / recipientCount;
-    let remainingBalance = 0;
-
-    // =====================================================
-    // 3. DUPLICATE CHECK
-    // =====================================================
-    const txnRef = db.collection("AllTransaction").doc(transactionNo);
-    const existingTxn = await txnRef.get();
-    if (existingTxn.exists) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Duplicate transaction detected" });
-    }
-
-    // =====================================================
-    // 4. BUILD QUERY
-    // =====================================================
-    let usersQuery = db
-      .collection(cardtype)
-      .where("typesOfgiveaway", "==", typesOfgiveawayText2);
-
-    if (
-      religionTextOtherMetrics &&
-      !IGNORED_RELIGIONS.includes(religionTextOtherMetrics)
-    ) {
-      usersQuery = usersQuery.where("religion", "==", religionTextOtherMetrics);
-    }
-
-    if (
-      genderTextOthermetrics &&
-      !IGNORED_GENDERS.includes(genderTextOthermetrics)
-    ) {
-      usersQuery = usersQuery.where("gender", "==", genderTextOthermetrics);
-    }
-
-    if (ageDropDownText && !IGNORED_AGE_RANGES.includes(ageDropDownText)) {
-      usersQuery = usersQuery.where("age", "==", ageDropDownText);
-    }
-
-    if (universityText && universityText !== "university (optional)") {
-      usersQuery = usersQuery.where("university", "==", universityText);
-    }
-
-    if (facultyText && facultyText !== "faculty") {
-      usersQuery = usersQuery.where("faculty", "==", facultyText);
-    }
-
-    if (
-      (!universityText || universityText === "university (optional)") &&
-      (!facultyText || facultyText === "faculty")
-    ) {
-      if (locationText && !IGNORED_STATES.includes(locationText)) {
-        usersQuery = usersQuery.where("state", "==", locationText);
-      }
-      if (locationTextStates && !IGNORED_LGAS.includes(locationTextStates)) {
-        usersQuery = usersQuery.where("localGOVT", "==", locationTextStates);
-      }
-    }
-
-    if (textCode?.trim()) {
-      usersQuery = usersQuery.where("code", "==", textCode);
-    }
-
-    // =====================================================
-    // 5. FETCH ELIGIBLE USERS
-    // =====================================================
-    const usersSnapshot = await usersQuery.get();
-    const applicants = usersSnapshot.docs.map((doc) => ({
-      uid: doc.id,
-      ...doc.data(),
-    }));
-
-    if (applicants.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No eligible users found" });
-    }
-
-    // =====================================================
-    // 6. RANDOM SELECTION + FILTER ALREADY RECEIVED
-    // =====================================================
-    const shuffled = [...applicants].sort(() => Math.random() - 0.5);
-    let selectedUsers = shuffled.slice(0, recipientCount);
-
-    const giveawayDocRef = db.collection("gottenGiveaway").doc("allUsers");
-    const giveawayDoc = await giveawayDocRef.get();
-    const existingUsers = giveawayDoc.exists
-      ? giveawayDoc.data()?.users || []
-      : [];
-
-    if (textCode?.trim()) {
-      selectedUsers = selectedUsers.filter(
-        (u) =>
-          !existingUsers.some(
-            (e) =>
-              e.phonenumber === u.phonenumber && e.code === textCode
-          )
-      );
-    } else {
-      selectedUsers = selectedUsers.filter(
-        (u) => !existingUsers.some((e) => e.phonenumber === u.phonenumber)
-      );
-    }
-
-    if (selectedUsers.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No eligible recipients available for this giveaway",
-      });
-    }
-
-    if (selectedUsers.length < recipientCount) {
-      remainingBalance =
-        amountAfterDeduction - selectedUsers.length * amountPerUser;
-    }
-
-    // =====================================================
-    // 7. TOTAL TO DEBIT
-    // =====================================================
-    const totalDebitAmount = Number(
-      (amountAfterDeduction - remainingBalance).toFixed(2)
-    );
-
-    if (totalDebitAmount <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "No amount to distribute" });
-    }
-
-    // =====================================================
-    // 8. RESOLVE GIVER'S XPRESS CUSTOMER ID
-    // =====================================================
-    const giverUserRef = db.collection("users").doc(phonenumber);
-    const giverCardRef = giverUserRef
-      .collection("Cards")
-      .doc(selectCardCares);
-
-    const [giverUserSnap, giverCardSnap] = await Promise.all([
-      giverUserRef.get(),
-      giverCardRef.get(),
-    ]);
-
-    if (!giverUserSnap.exists) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Giver not found" });
-    }
-    if (!giverCardSnap.exists) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Giver card not found" });
-    }
-
-    const giverUserData = giverUserSnap.data();
-    const giverCardData = giverCardSnap.data();
-
-    const giverCustomerId =
-      giverCardData?.xpress?.customerId ||
-      giverUserData?.xpress?.customerId;
-
-    if (!giverCustomerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Giver does not have an Xpress wallet configured",
-      });
-    }
-
-    // =====================================================
-    // 9. CHECK GIVER BALANCE VIA XPRESS
-    // =====================================================
-    let giverWallet;
-    try {
-      const walletRes = await axios.get(
-        `${XPRESS_BASE_URL}/wallet/customer`,
-        {
-          params: { customerId: giverCustomerId },
-          headers: {
-            Authorization: `Bearer ${PROVIDUS_SECRET_KEY}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      giverWallet = walletRes.data?.wallet;
-    } catch (walletError) {
-      console.error(
-        "XPRESS WALLET FETCH ERROR:",
-        walletError.response?.data || walletError.message
-      );
-      return res.status(400).json({
-        success: false,
-        message: "Unable to verify giver's Xpress wallet balance",
-      });
-    }
-
-    const giverAvailableBalance = Number(giverWallet?.availableBalance || 0);
-    if (giverAvailableBalance < totalDebitAmount) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient funds",
-        available: giverAvailableBalance,
-        required: totalDebitAmount,
-      });
-    }
-
-    // =====================================================
-    // 10. DEBIT GIVER'S XPRESS WALLET
-    // =====================================================
-    let xpressResponse;
-    try {
-      xpressResponse = await axios.post(
-        `${XPRESS_BASE_URL}/wallet/debit`,
-        {
-          amount: totalDebitAmount,
-          reference: transactionNo,
-          customerId: giverCustomerId,
-          metadata: {
-            firebaseUserId: phonenumber,
-            cardId: selectCardCares,
-            purpose: "giveaway",
-            giveawayType: typesOfgiveawayText2,
-            hashtag: `#transfrcares_${hashTag}`,
-            recipientCount: selectedUsers.length,
-            amountPerUser: Number(amountPerUser.toFixed(2)),
-            source: "transfr_app",
-          },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${PROVIDUS_SECRET_KEY}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-    } catch (xpressError) {
-      console.error(
-        "XPRESS GIVEAWAY DEBIT ERROR:",
-        xpressError.response?.data || xpressError.message
-      );
-
-      // Log failed attempt for audit
-      await txnRef.set({
-        type: "Giveaway",
-        provider: "xpress",
-        amount: totalDebitAmount,
-        status: "failed",
-        failureReason:
-          xpressError.response?.data?.message || xpressError.message,
-        giver: {
-          phone: phonenumber,
-          cardId: selectCardCares,
-          customerId: giverCustomerId,
-        },
-        giveawayType: typesOfgiveawayText2,
-        hashtag: `#transfrcares_${hashTag}`,
-        reference: transactionNo,
-        paymentMethod: "xpress",
-        date,
-      });
-
-      return res.status(400).json({
-        success: false,
-        message:
-          xpressError.response?.data?.message || "Giveaway debit failed",
-        xpress: xpressError.response?.data || null,
-      });
-    }
-
-    if (!xpressResponse.data || xpressResponse.data.status === false) {
-      return res.status(400).json({
-        success: false,
-        message: xpressResponse.data?.message || "Giveaway debit failed",
-        xpress: xpressResponse.data,
-      });
-    }
-
-    const xpressReference =
-      xpressResponse.data?.reference ||
-      xpressResponse.data?.transactionReference ||
-      xpressResponse.data?.transactionId ||
-      transactionNo;
-
-    console.log("✅ Xpress giveaway debit success:", xpressResponse.data);
-
-    // =====================================================
-    // 11. FETCH FRESH GIVER BALANCE
-    // =====================================================
-    let newGiverBalance = giverAvailableBalance - totalDebitAmount;
-    try {
-      const freshRes = await axios.get(
-        `${XPRESS_BASE_URL}/wallet/customer`,
-        {
-          params: { customerId: giverCustomerId },
-          headers: { Authorization: `Bearer ${PROVIDUS_SECRET_KEY}` },
-        }
-      );
-      if (freshRes.data?.wallet?.availableBalance !== undefined) {
-        newGiverBalance = Number(freshRes.data.wallet.availableBalance);
-      }
-    } catch (refreshError) {
-      console.warn(
-        "Could not refresh giver balance:",
-        refreshError.message
-      );
-    }
-
-    // =====================================================
-    // 12. FIRESTORE WRITES (CHUNKED)
-    // =====================================================
-    const businessType =
-      BUSINESS_TYPE_MAP[typesOfgiveawayText2] || typesOfgiveawayText2;
-    const simplifiedUsers = [];
-    const giveawayTimestamp = date;
-
-    const recipientChunks = [];
-    for (let i = 0; i < selectedUsers.length; i += RECIPIENTS_PER_BATCH) {
-      recipientChunks.push(selectedUsers.slice(i, i + RECIPIENTS_PER_BATCH));
-    }
-
-    for (let chunkIdx = 0; chunkIdx < recipientChunks.length; chunkIdx++) {
-      const chunk = recipientChunks[chunkIdx];
-      const batch = db.batch();
-
-      for (const user of chunk) {
-        const recipientCardRef = db
-          .collection(cardtype)
-          .doc(user.cardNumber);
-
-        const recipientUserCardRef = db
-          .collection("users")
-          .doc(user.phonenumber)
-          .collection(cardtype)
-          .doc(user.cardNumber);
-
-        const recipientUserRef = db
-          .collection("users")
-          .doc(user.phonenumber);
-
-        const giveawayRef = recipientUserRef.collection("giveaways").doc();
-        const recipientTxnRef = recipientUserRef
-          .collection("Transactions")
-          .doc();
-
-        const newBalance = Number(
-          ((user.balance || 0) + amountPerUser).toFixed(2)
-        );
-
-        batch.update(recipientCardRef, {
-          balance: newBalance,
-          updatedAt: giveawayTimestamp,
-        });
-
-        batch.update(recipientUserCardRef, {
-          balance: newBalance,
-          updatedAt: giveawayTimestamp,
-        });
-
-        batch.update(recipientUserRef, { receivedGiveaway: true });
-
-        batch.set(giveawayRef, {
-          typesOfgiveaway: typesOfgiveawayText2,
-          hashtag: `#transfrcares_${hashTag}`,
-          giverName: donorName,
-          goodwillMessages: goodwill,
-          createdAt: giveawayTimestamp,
-          phonenumber,
-          amountsent: Number(amountPerUser.toFixed(2)),
-          xpressReference,
-        });
-
-        batch.set(recipientTxnRef, {
-          type: "GiveawayReceived",
-          provider: "xpress",
-          status: "receiver",
-          balance: newBalance,
-          cardNumber: user.cardNumber,
-          amount: Number(amountPerUser.toFixed(2)),
-          balanceType: cardtype,
-          date: giveawayTimestamp,
-          firstname: "Transfr-Cares",
-          lastname: "",
-          businessType,
-          transactionNo,
-          reference: transactionNo,
-          cardType: cardtype,
-          paymentMethod: "xpress",
-          giverPhone: phonenumber,
-          giverName: donorName,
-          xpressReference,
-        });
-
-        simplifiedUsers.push({
-          phonenumber: user.phonenumber,
-          code: textCode || null,
-        });
-      }
-
-      // Add the global gottenGiveaway update to the last chunk only
-      if (chunkIdx === recipientChunks.length - 1) {
-        if (simplifiedUsers.length > 0) {
-          batch.set(
-            giveawayDocRef,
-            {
-              users: admin.firestore.FieldValue.arrayUnion(...simplifiedUsers),
-            },
-            { merge: true }
-          );
-        }
-
-        // Giver transaction log
-        const giverTxnRef = giverUserRef
-          .collection("Transactions")
-          .doc(transactionNo);
-
-        batch.set(giverTxnRef, {
-          type: "GiveawaySent",
-          provider: "xpress",
-          status: "sender",
-          amount: totalDebitAmount,
-          balanceAfter: newGiverBalance,
-          balanceBefore: giverAvailableBalance,
-          balanceType: "xpress_wallet",
-          cardNumber: selectCardCares,
-          cardType: cardtype,
-          paymentMethod: "xpress",
-          firstname: "Transfr-Cares",
-          lastname: "",
-          transactionNo,
-          reference: transactionNo,
-          recipientCount: simplifiedUsers.length,
-          amountPerUser: Number(amountPerUser.toFixed(2)),
-          giveawayType: typesOfgiveawayText2,
-          hashtag: `#transfrcares_${hashTag}`,
-          xpressReference,
-          date: giveawayTimestamp,
-        });
-
-        // Global transaction log
-        batch.set(txnRef, {
-          type: "Giveaway",
-          provider: "xpress",
-          amount: totalDebitAmount,
-          transactionNo,
-          reference: transactionNo,
-          xpressReference,
-          paymentMethod: "xpress",
-          status: "success",
-          giver: {
-            phone: phonenumber,
-            cardId: selectCardCares,
-            customerId: giverCustomerId,
-          },
-          giveawayType: typesOfgiveawayText2,
-          hashtag: `#transfrcares_${hashTag}`,
-          numberOfRecipients: simplifiedUsers.length,
-          amountPerUser: Number(amountPerUser.toFixed(2)),
-          remainingBalance,
-          giverBalanceAfter: newGiverBalance,
-          xpressData: xpressResponse.data,
-          date: giveawayTimestamp,
-        });
-
-        // Ledger
-        batch.set(db.collection("TransfrLedger").doc(transactionNo), {
-          reference: transactionNo,
-          type: "xpress_wallet_to_giveaway",
-          provider: "xpress",
-          amount: totalDebitAmount,
-          giverPhone: phonenumber,
-          giverCardId: selectCardCares,
-          giverCustomerId,
-          giveawayType: typesOfgiveawayText2,
-          recipientCount: simplifiedUsers.length,
-          amountPerUser: Number(amountPerUser.toFixed(2)),
-          remainingBalance,
-          giverBalanceAfter: newGiverBalance,
-          xpressReference,
-          status: "success",
-          createdAt: giveawayTimestamp,
-        });
-
-        // Notification flag for giver
-        batch.set(
-          giverUserRef,
-          { notification: true, inappnotification: true },
-          { merge: true }
-        );
-      }
-
-      await batch.commit();
-    }
-
-    // =====================================================
-    // 13. PUSH NOTIFICATIONS (after all batches commit)
-    // =====================================================
-    for (const user of selectedUsers) {
-      if (!user.fcm) continue;
-      try {
-        await messaging.send({
-          token: user.fcm,
-          notification: {
-            title: "You received a Transfr-Cares gift!",
-            body: `₦${amountPerUser.toFixed(2)} has been sent to your ${cardtype}.`,
-          },
-          data: {
-            type: "giveaway_received",
-            transactionNo,
-            amount: amountPerUser.toString(),
-          },
-        });
-      } catch (pushError) {
-        console.error("Push notification failed:", pushError.message);
-      }
-    }
-
-    // =====================================================
-    // 14. SUCCESS RESPONSE
-    // =====================================================
-    return res.status(200).json({
-      success: true,
-      message: "All monies sent to beneficiaries",
-      data: {
-        transactionNo,
-        xpressReference,
-        totalDebited: totalDebitAmount,
-        amountPerUser: Number(amountPerUser.toFixed(2)),
-        recipientCount: simplifiedUsers.length,
-        remainingBalance,
-        giverBalanceAfter: newGiverBalance,
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Save-Giver Error:",
-      error.response?.data || error.message
-    );
-    return res.status(500).json({
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "An error occurred",
-    });
-  }
-});
+// app.post("/save-giver", async (req, res) => {
+//   const date = admin.firestore.FieldValue.serverTimestamp();
+
+//   try {
+//     const {
+//       phonenumber,
+//       donorName,
+//       hashTag,
+//       goodwill,
+//       amountCare,
+//       beneficiariesCareNum,
+//       beneficiariesCare,
+//       typesOfgiveawayText2,
+//       selectCardCares,
+//       transactionNo,
+//       religionTextOtherMetrics,
+//       genderTextOthermetrics,
+//       ageDropDownText,
+//       universityText,
+//       facultyText,
+//       locationText,
+//       locationTextStates,
+//       textCode,
+//       cardtype,
+//     } = req.body;
+
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!phonenumber) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Missing giver phone number" });
+//     }
+//     if (!donorName?.trim()) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Enter donor's name" });
+//     }
+//     if (!hashTag?.trim()) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Enter hashtag" });
+//     }
+//     if (!goodwill?.trim()) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Enter goodwill message" });
+//     }
+//     if (
+//       beneficiariesCare === "beneficiaries" ||
+//       beneficiariesCare === "alanfani" ||
+//       beneficiariesCare === "mai anfana" ||
+//       beneficiariesCare === "onye na erite uru"
+//     ) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Select beneficiaries" });
+//     }
+//     if (!transactionNo) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Missing transaction reference" });
+//     }
+//     if (!cardtype) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Missing card type" });
+//     }
+
+//     const recipientCount = Number(beneficiariesCareNum);
+//     if (!recipientCount || recipientCount <= 0) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid beneficiaries count" });
+//     }
+
+//     // =====================================================
+//     // 2. COMPUTE AMOUNTS
+//     // =====================================================
+//     const amount = Number(amountCare);
+//     if (!amount || amount <= 0) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid amount" });
+//     }
+
+//     const deductedAmount = amount * GIVEAWAY_FEE_RATE;
+//     const amountAfterDeduction = amount - deductedAmount;
+//     const amountPerUser = amountAfterDeduction / recipientCount;
+//     let remainingBalance = 0;
+
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const txnRef = db.collection("AllTransaction").doc(transactionNo);
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Duplicate transaction detected" });
+//     }
+
+//     // =====================================================
+//     // 4. BUILD QUERY
+//     // =====================================================
+//     let usersQuery = db
+//       .collection(cardtype)
+//       .where("typesOfgiveaway", "==", typesOfgiveawayText2);
+
+//     if (
+//       religionTextOtherMetrics &&
+//       !IGNORED_RELIGIONS.includes(religionTextOtherMetrics)
+//     ) {
+//       usersQuery = usersQuery.where("religion", "==", religionTextOtherMetrics);
+//     }
+
+//     if (
+//       genderTextOthermetrics &&
+//       !IGNORED_GENDERS.includes(genderTextOthermetrics)
+//     ) {
+//       usersQuery = usersQuery.where("gender", "==", genderTextOthermetrics);
+//     }
+
+//     if (ageDropDownText && !IGNORED_AGE_RANGES.includes(ageDropDownText)) {
+//       usersQuery = usersQuery.where("age", "==", ageDropDownText);
+//     }
+
+//     if (universityText && universityText !== "university (optional)") {
+//       usersQuery = usersQuery.where("university", "==", universityText);
+//     }
+
+//     if (facultyText && facultyText !== "faculty") {
+//       usersQuery = usersQuery.where("faculty", "==", facultyText);
+//     }
+
+//     if (
+//       (!universityText || universityText === "university (optional)") &&
+//       (!facultyText || facultyText === "faculty")
+//     ) {
+//       if (locationText && !IGNORED_STATES.includes(locationText)) {
+//         usersQuery = usersQuery.where("state", "==", locationText);
+//       }
+//       if (locationTextStates && !IGNORED_LGAS.includes(locationTextStates)) {
+//         usersQuery = usersQuery.where("localGOVT", "==", locationTextStates);
+//       }
+//     }
+
+//     if (textCode?.trim()) {
+//       usersQuery = usersQuery.where("code", "==", textCode);
+//     }
+
+//     // =====================================================
+//     // 5. FETCH ELIGIBLE USERS
+//     // =====================================================
+//     const usersSnapshot = await usersQuery.get();
+//     const applicants = usersSnapshot.docs.map((doc) => ({
+//       uid: doc.id,
+//       ...doc.data(),
+//     }));
+
+//     if (applicants.length === 0) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "No eligible users found" });
+//     }
+
+//     // =====================================================
+//     // 6. RANDOM SELECTION + FILTER ALREADY RECEIVED
+//     // =====================================================
+//     const shuffled = [...applicants].sort(() => Math.random() - 0.5);
+//     let selectedUsers = shuffled.slice(0, recipientCount);
+
+//     const giveawayDocRef = db.collection("gottenGiveaway").doc("allUsers");
+//     const giveawayDoc = await giveawayDocRef.get();
+//     const existingUsers = giveawayDoc.exists
+//       ? giveawayDoc.data()?.users || []
+//       : [];
+
+//     if (textCode?.trim()) {
+//       selectedUsers = selectedUsers.filter(
+//         (u) =>
+//           !existingUsers.some(
+//             (e) =>
+//               e.phonenumber === u.phonenumber && e.code === textCode
+//           )
+//       );
+//     } else {
+//       selectedUsers = selectedUsers.filter(
+//         (u) => !existingUsers.some((e) => e.phonenumber === u.phonenumber)
+//       );
+//     }
+
+//     if (selectedUsers.length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "No eligible recipients available for this giveaway",
+//       });
+//     }
+
+//     if (selectedUsers.length < recipientCount) {
+//       remainingBalance =
+//         amountAfterDeduction - selectedUsers.length * amountPerUser;
+//     }
+
+//     // =====================================================
+//     // 7. TOTAL TO DEBIT
+//     // =====================================================
+//     const totalDebitAmount = Number(
+//       (amountAfterDeduction - remainingBalance).toFixed(2)
+//     );
+
+//     if (totalDebitAmount <= 0) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "No amount to distribute" });
+//     }
+
+//     // =====================================================
+//     // 8. RESOLVE GIVER'S XPRESS CUSTOMER ID
+//     // =====================================================
+//     const giverUserRef = db.collection("users").doc(phonenumber);
+//     const giverCardRef = giverUserRef
+//       .collection("Cards")
+//       .doc(selectCardCares);
+
+//     const [giverUserSnap, giverCardSnap] = await Promise.all([
+//       giverUserRef.get(),
+//       giverCardRef.get(),
+//     ]);
+
+//     if (!giverUserSnap.exists) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Giver not found" });
+//     }
+//     if (!giverCardSnap.exists) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Giver card not found" });
+//     }
+
+//     const giverUserData = giverUserSnap.data();
+//     const giverCardData = giverCardSnap.data();
+
+//     const giverCustomerId =
+//       giverCardData?.xpress?.customerId ||
+//       giverUserData?.xpress?.customerId;
+
+//     if (!giverCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Giver does not have an Xpress wallet configured",
+//       });
+//     }
+
+//     // =====================================================
+//     // 9. CHECK GIVER BALANCE VIA XPRESS
+//     // =====================================================
+//     let giverWallet;
+//     try {
+//       const walletRes = await axios.get(
+//         `${XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: giverCustomerId },
+//           headers: {
+//             Authorization: `Bearer ${PROVIDUS_SECRET_KEY}`,
+//             "Content-Type": "application/json",
+//           },
+//         }
+//       );
+//       giverWallet = walletRes.data?.wallet;
+//     } catch (walletError) {
+//       console.error(
+//         "XPRESS WALLET FETCH ERROR:",
+//         walletError.response?.data || walletError.message
+//       );
+//       return res.status(400).json({
+//         success: false,
+//         message: "Unable to verify giver's Xpress wallet balance",
+//       });
+//     }
+
+//     const giverAvailableBalance = Number(giverWallet?.availableBalance || 0);
+//     if (giverAvailableBalance < totalDebitAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient funds",
+//         available: giverAvailableBalance,
+//         required: totalDebitAmount,
+//       });
+//     }
+
+//     // =====================================================
+//     // 10. DEBIT GIVER'S XPRESS WALLET
+//     // =====================================================
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${XPRESS_BASE_URL}/wallet/debit`,
+//         {
+//           amount: totalDebitAmount,
+//           reference: transactionNo,
+//           customerId: giverCustomerId,
+//           metadata: {
+//             firebaseUserId: phonenumber,
+//             cardId: selectCardCares,
+//             purpose: "giveaway",
+//             giveawayType: typesOfgiveawayText2,
+//             hashtag: `#transfrcares_${hashTag}`,
+//             recipientCount: selectedUsers.length,
+//             amountPerUser: Number(amountPerUser.toFixed(2)),
+//             source: "transfr_app",
+//           },
+//         },
+//         {
+//           headers: {
+//             Authorization: `Bearer ${PROVIDUS_SECRET_KEY}`,
+//             "Content-Type": "application/json",
+//           },
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error(
+//         "XPRESS GIVEAWAY DEBIT ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
+
+//       // Log failed attempt for audit
+//       await txnRef.set({
+//         type: "Giveaway",
+//         provider: "xpress",
+//         amount: totalDebitAmount,
+//         status: "failed",
+//         failureReason:
+//           xpressError.response?.data?.message || xpressError.message,
+//         giver: {
+//           phone: phonenumber,
+//           cardId: selectCardCares,
+//           customerId: giverCustomerId,
+//         },
+//         giveawayType: typesOfgiveawayText2,
+//         hashtag: `#transfrcares_${hashTag}`,
+//         reference: transactionNo,
+//         paymentMethod: "xpress",
+//         date,
+//       });
+
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           xpressError.response?.data?.message || "Giveaway debit failed",
+//         xpress: xpressError.response?.data || null,
+//       });
+//     }
+
+//     if (!xpressResponse.data || xpressResponse.data.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressResponse.data?.message || "Giveaway debit failed",
+//         xpress: xpressResponse.data,
+//       });
+//     }
+
+//     const xpressReference =
+//       xpressResponse.data?.reference ||
+//       xpressResponse.data?.transactionReference ||
+//       xpressResponse.data?.transactionId ||
+//       transactionNo;
+
+//     console.log("✅ Xpress giveaway debit success:", xpressResponse.data);
+
+//     // =====================================================
+//     // 11. FETCH FRESH GIVER BALANCE
+//     // =====================================================
+//     let newGiverBalance = giverAvailableBalance - totalDebitAmount;
+//     try {
+//       const freshRes = await axios.get(
+//         `${XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: giverCustomerId },
+//           headers: { Authorization: `Bearer ${PROVIDUS_SECRET_KEY}` },
+//         }
+//       );
+//       if (freshRes.data?.wallet?.availableBalance !== undefined) {
+//         newGiverBalance = Number(freshRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn(
+//         "Could not refresh giver balance:",
+//         refreshError.message
+//       );
+//     }
+
+//     // =====================================================
+//     // 12. FIRESTORE WRITES (CHUNKED)
+//     // =====================================================
+//     const businessType =
+//       BUSINESS_TYPE_MAP[typesOfgiveawayText2] || typesOfgiveawayText2;
+//     const simplifiedUsers = [];
+//     const giveawayTimestamp = date;
+
+//     const recipientChunks = [];
+//     for (let i = 0; i < selectedUsers.length; i += RECIPIENTS_PER_BATCH) {
+//       recipientChunks.push(selectedUsers.slice(i, i + RECIPIENTS_PER_BATCH));
+//     }
+
+//     for (let chunkIdx = 0; chunkIdx < recipientChunks.length; chunkIdx++) {
+//       const chunk = recipientChunks[chunkIdx];
+//       const batch = db.batch();
+
+//       for (const user of chunk) {
+//         const recipientCardRef = db
+//           .collection(cardtype)
+//           .doc(user.cardNumber);
+
+//         const recipientUserCardRef = db
+//           .collection("users")
+//           .doc(user.phonenumber)
+//           .collection(cardtype)
+//           .doc(user.cardNumber);
+
+//         const recipientUserRef = db
+//           .collection("users")
+//           .doc(user.phonenumber);
+
+//         const giveawayRef = recipientUserRef.collection("giveaways").doc();
+//         const recipientTxnRef = recipientUserRef
+//           .collection("Transactions")
+//           .doc();
+
+//         const newBalance = Number(
+//           ((user.balance || 0) + amountPerUser).toFixed(2)
+//         );
+
+//         batch.update(recipientCardRef, {
+//           balance: newBalance,
+//           updatedAt: giveawayTimestamp,
+//         });
+
+//         batch.update(recipientUserCardRef, {
+//           balance: newBalance,
+//           updatedAt: giveawayTimestamp,
+//         });
+
+//         batch.update(recipientUserRef, { receivedGiveaway: true });
+
+//         batch.set(giveawayRef, {
+//           typesOfgiveaway: typesOfgiveawayText2,
+//           hashtag: `#transfrcares_${hashTag}`,
+//           giverName: donorName,
+//           goodwillMessages: goodwill,
+//           createdAt: giveawayTimestamp,
+//           phonenumber,
+//           amountsent: Number(amountPerUser.toFixed(2)),
+//           xpressReference,
+//         });
+
+//         batch.set(recipientTxnRef, {
+//           type: "GiveawayReceived",
+//           provider: "xpress",
+//           status: "receiver",
+//           balance: newBalance,
+//           cardNumber: user.cardNumber,
+//           amount: Number(amountPerUser.toFixed(2)),
+//           balanceType: cardtype,
+//           date: giveawayTimestamp,
+//           firstname: "Transfr-Cares",
+//           lastname: "",
+//           businessType,
+//           transactionNo,
+//           reference: transactionNo,
+//           cardType: cardtype,
+//           paymentMethod: "xpress",
+//           giverPhone: phonenumber,
+//           giverName: donorName,
+//           xpressReference,
+//         });
+
+//         simplifiedUsers.push({
+//           phonenumber: user.phonenumber,
+//           code: textCode || null,
+//         });
+//       }
+
+//       // Add the global gottenGiveaway update to the last chunk only
+//       if (chunkIdx === recipientChunks.length - 1) {
+//         if (simplifiedUsers.length > 0) {
+//           batch.set(
+//             giveawayDocRef,
+//             {
+//               users: admin.firestore.FieldValue.arrayUnion(...simplifiedUsers),
+//             },
+//             { merge: true }
+//           );
+//         }
+
+//         // Giver transaction log
+//         const giverTxnRef = giverUserRef
+//           .collection("Transactions")
+//           .doc(transactionNo);
+
+//         batch.set(giverTxnRef, {
+//           type: "GiveawaySent",
+//           provider: "xpress",
+//           status: "sender",
+//           amount: totalDebitAmount,
+//           balanceAfter: newGiverBalance,
+//           balanceBefore: giverAvailableBalance,
+//           balanceType: "xpress_wallet",
+//           cardNumber: selectCardCares,
+//           cardType: cardtype,
+//           paymentMethod: "xpress",
+//           firstname: "Transfr-Cares",
+//           lastname: "",
+//           transactionNo,
+//           reference: transactionNo,
+//           recipientCount: simplifiedUsers.length,
+//           amountPerUser: Number(amountPerUser.toFixed(2)),
+//           giveawayType: typesOfgiveawayText2,
+//           hashtag: `#transfrcares_${hashTag}`,
+//           xpressReference,
+//           date: giveawayTimestamp,
+//         });
+
+//         // Global transaction log
+//         batch.set(txnRef, {
+//           type: "Giveaway",
+//           provider: "xpress",
+//           amount: totalDebitAmount,
+//           transactionNo,
+//           reference: transactionNo,
+//           xpressReference,
+//           paymentMethod: "xpress",
+//           status: "success",
+//           giver: {
+//             phone: phonenumber,
+//             cardId: selectCardCares,
+//             customerId: giverCustomerId,
+//           },
+//           giveawayType: typesOfgiveawayText2,
+//           hashtag: `#transfrcares_${hashTag}`,
+//           numberOfRecipients: simplifiedUsers.length,
+//           amountPerUser: Number(amountPerUser.toFixed(2)),
+//           remainingBalance,
+//           giverBalanceAfter: newGiverBalance,
+//           xpressData: xpressResponse.data,
+//           date: giveawayTimestamp,
+//         });
+
+//         // Ledger
+//         batch.set(db.collection("TransfrLedger").doc(transactionNo), {
+//           reference: transactionNo,
+//           type: "xpress_wallet_to_giveaway",
+//           provider: "xpress",
+//           amount: totalDebitAmount,
+//           giverPhone: phonenumber,
+//           giverCardId: selectCardCares,
+//           giverCustomerId,
+//           giveawayType: typesOfgiveawayText2,
+//           recipientCount: simplifiedUsers.length,
+//           amountPerUser: Number(amountPerUser.toFixed(2)),
+//           remainingBalance,
+//           giverBalanceAfter: newGiverBalance,
+//           xpressReference,
+//           status: "success",
+//           createdAt: giveawayTimestamp,
+//         });
+
+//         // Notification flag for giver
+//         batch.set(
+//           giverUserRef,
+//           { notification: true, inappnotification: true },
+//           { merge: true }
+//         );
+//       }
+
+//       await batch.commit();
+//     }
+
+//     // =====================================================
+//     // 13. PUSH NOTIFICATIONS (after all batches commit)
+//     // =====================================================
+//     for (const user of selectedUsers) {
+//       if (!user.fcm) continue;
+//       try {
+//         await messaging.send({
+//           token: user.fcm,
+//           notification: {
+//             title: "You received a Transfr-Cares gift!",
+//             body: `₦${amountPerUser.toFixed(2)} has been sent to your ${cardtype}.`,
+//           },
+//           data: {
+//             type: "giveaway_received",
+//             transactionNo,
+//             amount: amountPerUser.toString(),
+//           },
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError.message);
+//       }
+//     }
+
+//     // =====================================================
+//     // 14. SUCCESS RESPONSE
+//     // =====================================================
+//     return res.status(200).json({
+//       success: true,
+//       message: "All monies sent to beneficiaries",
+//       data: {
+//         transactionNo,
+//         xpressReference,
+//         totalDebited: totalDebitAmount,
+//         amountPerUser: Number(amountPerUser.toFixed(2)),
+//         recipientCount: simplifiedUsers.length,
+//         remainingBalance,
+//         giverBalanceAfter: newGiverBalance,
+//       },
+//     });
+//   } catch (error) {
+//     console.error(
+//       "Save-Giver Error:",
+//       error.response?.data || error.message
+//     );
+//     return res.status(500).json({
+//       success: false,
+//       message:
+//         error.response?.data?.message ||
+//         error.message ||
+//         "An error occurred",
+//     });
+//   }
+// });
 
 // app.post("/resolve-bvn", async (req, res) => {
 // try {
@@ -12298,6 +14777,499 @@ app.post("/save-giver", async (req, res) => {
   
 // });
 
+
+
+app.post("/save-giver", async (req, res) => {
+  const date = admin.firestore.FieldValue.serverTimestamp();
+
+  try {
+    const {
+      phonenumber,
+      donorName,
+      hashTag,
+      goodwill,
+      amountCare,
+      beneficiariesCareNum,
+      beneficiariesCare,
+      typesOfgiveawayText2,
+      selectCardCares,
+      transactionNo,
+      religionTextOtherMetrics,
+      genderTextOthermetrics,
+      ageDropDownText,
+      universityText,
+      facultyText,
+      locationText,
+      locationTextStates,
+      textCode,
+      cardtype,
+    } = req.body;
+
+    // =====================================================
+    // 1. VALIDATION
+    // =====================================================
+    if (!phonenumber || !donorName?.trim() || !hashTag?.trim() || !goodwill?.trim() || !transactionNo || !cardtype) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+    if (
+      beneficiariesCare === "beneficiaries" ||
+      beneficiariesCare === "alanfani" ||
+      beneficiariesCare === "mai anfana" ||
+      beneficiariesCare === "onye na erite uru"
+    ) {
+      return res.status(400).json({ success: false, message: "Select beneficiaries" });
+    }
+
+    const recipientCount = Number(beneficiariesCareNum);
+    if (!recipientCount || recipientCount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid beneficiaries count" });
+    }
+
+    // =====================================================
+    // 2. COMPUTE AMOUNTS
+    // =====================================================
+    const amount = Number(amountCare);
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid amount" });
+    }
+
+    const deductedAmount = amount * GIVEAWAY_FEE_RATE;
+    const amountAfterDeduction = amount - deductedAmount;
+    const amountPerUser = amountAfterDeduction / recipientCount;
+    let remainingBalance = 0;
+
+    // =====================================================
+    // 3. DUPLICATE CHECK
+    // =====================================================
+    const txnRef = db.collection("AllTransaction").doc(transactionNo);
+    const existingTxn = await txnRef.get();
+    if (existingTxn.exists) {
+      return res.status(400).json({ success: false, message: "Duplicate transaction detected" });
+    }
+
+    // =====================================================
+    // 4. BUILD QUERY (Skipped for brevity, keep your original query logic)
+    // =====================================================
+    let usersQuery = db.collection(cardtype).where("typesOfgiveaway", "==", typesOfgiveawayText2);
+
+    if (religionTextOtherMetrics && !IGNORED_RELIGIONS.includes(religionTextOtherMetrics)) {
+      usersQuery = usersQuery.where("religion", "==", religionTextOtherMetrics);
+    }
+    if (genderTextOthermetrics && !IGNORED_GENDERS.includes(genderTextOthermetrics)) {
+      usersQuery = usersQuery.where("gender", "==", genderTextOthermetrics);
+    }
+    if (ageDropDownText && !IGNORED_AGE_RANGES.includes(ageDropDownText)) {
+      usersQuery = usersQuery.where("age", "==", ageDropDownText);
+    }
+    if (universityText && universityText !== "university (optional)") {
+      usersQuery = usersQuery.where("university", "==", universityText);
+    }
+    if (facultyText && facultyText !== "faculty") {
+      usersQuery = usersQuery.where("faculty", "==", facultyText);
+    }
+    if (
+      (!universityText || universityText === "university (optional)") &&
+      (!facultyText || facultyText === "faculty")
+    ) {
+      if (locationText && !IGNORED_STATES.includes(locationText)) {
+        usersQuery = usersQuery.where("state", "==", locationText);
+      }
+      if (locationTextStates && !IGNORED_LGAS.includes(locationTextStates)) {
+        usersQuery = usersQuery.where("localGOVT", "==", locationTextStates);
+      }
+    }
+    if (textCode?.trim()) {
+      usersQuery = usersQuery.where("code", "==", textCode);
+    }
+
+    // =====================================================
+    // 5. FETCH ELIGIBLE USERS & RANDOM SELECTION
+    // =====================================================
+    const usersSnapshot = await usersQuery.get();
+    const applicants = usersSnapshot.docs.map((doc) => ({ uid: doc.id, ...doc.data() }));
+
+    if (applicants.length === 0) {
+      return res.status(404).json({ success: false, message: "No eligible users found" });
+    }
+
+    const shuffled = [...applicants].sort(() => Math.random() - 0.5);
+    let selectedUsers = shuffled.slice(0, recipientCount);
+
+    const giveawayDocRef = db.collection("gottenGiveaway").doc("allUsers");
+    const giveawayDoc = await giveawayDocRef.get();
+    const existingUsers = giveawayDoc.exists ? giveawayDoc.data()?.users || [] : [];
+
+    if (textCode?.trim()) {
+      selectedUsers = selectedUsers.filter(
+        (u) => !existingUsers.some((e) => e.phonenumber === u.phonenumber && e.code === textCode)
+      );
+    } else {
+      selectedUsers = selectedUsers.filter(
+        (u) => !existingUsers.some((e) => e.phonenumber === u.phonenumber)
+      );
+    }
+
+    if (selectedUsers.length === 0) {
+      return res.status(400).json({ success: false, message: "No eligible recipients available" });
+    }
+
+    if (selectedUsers.length < recipientCount) {
+      remainingBalance = amountAfterDeduction - selectedUsers.length * amountPerUser;
+    }
+
+    // =====================================================
+    // 6. TOTAL TO DEBIT
+    // =====================================================
+    const totalDebitAmount = Number((amountAfterDeduction - remainingBalance).toFixed(2));
+    if (totalDebitAmount <= 0) {
+      return res.status(400).json({ success: false, message: "No amount to distribute" });
+    }
+
+    // =====================================================
+    // 7. RESOLVE GIVER'S XPRESS CUSTOMER ID
+    // =====================================================
+    const giverUserRef = db.collection("users").doc(phonenumber);
+    const giverCardRef = giverUserRef.collection("Cards").doc(selectCardCares);
+
+    const [giverUserSnap, giverCardSnap] = await Promise.all([
+      giverUserRef.get(),
+      giverCardRef.get(),
+    ]);
+
+    if (!giverUserSnap.exists || !giverCardSnap.exists) {
+      return res.status(404).json({ success: false, message: "Giver or Card not found" });
+    }
+
+    const giverUserData = giverUserSnap.data();
+    const giverCardData = giverCardSnap.data();
+
+    const giverCustomerId = giverCardData?.xpress?.customerId || giverUserData?.xpress?.customerId;
+
+    if (!giverCustomerId) {
+      return res.status(400).json({ success: false, message: "Giver does not have an Xpress wallet configured" });
+    }
+
+    // =====================================================
+    // 8. CHECK GIVER BALANCE VIA XPRESS
+    // =====================================================
+    let giverWallet;
+    try {
+      const walletRes = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+        {
+          params: { customerId: giverCustomerId },
+          headers: {
+            Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 15000
+        }
+      );
+      giverWallet = walletRes.data?.wallet;
+    } catch (walletError) {
+      console.error("XPRESS WALLET FETCH ERROR:", walletError.response?.data || walletError.message);
+      return res.status(400).json({ success: false, message: "Unable to verify giver's Xpress wallet balance" });
+    }
+
+    const giverAvailableBalance = Number(giverWallet?.availableBalance || 0);
+    if (giverAvailableBalance < totalDebitAmount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient funds",
+        available: giverAvailableBalance,
+        required: totalDebitAmount,
+      });
+    }
+
+    // =====================================================
+    // 9. TRANSFER TO TRANSFR GLOBAL MERCHANT ACCOUNT
+    // =====================================================
+    let xpressResponse;
+    try {
+      xpressResponse = await axios.post(
+        `${process.env.XPRESS_BASE_URL}/transfer/bank/customer`,
+        {
+          amount: totalDebitAmount,
+          sortCode: "100040", // Xpresswallet Bank Code
+          accountNumber: "8801689068", // Transfr Global Account Number
+          accountName: "Transfr Global Resources Limited",
+          narration: `Giveaway funding: ${typesOfgiveawayText2}`,
+          customerId: giverCustomerId,
+          metadata: {
+            firebaseUserId: phonenumber,
+            cardId: selectCardCares,
+            purpose: "giveaway_funding",
+            giveawayType: typesOfgiveawayText2,
+            hashtag: `#transfrcares_${hashTag}`,
+            recipientCount: selectedUsers.length,
+            amountPerUser: Number(amountPerUser.toFixed(2)),
+            source: "transfr_app",
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 20000
+        }
+      );
+    } catch (xpressError) {
+      console.error("XPRESS GIVEAWAY TRANSFER ERROR:", xpressError.response?.data || xpressError.message);
+
+      // Log failed attempt for audit
+      await txnRef.set({
+        type: "Giveaway",
+        provider: "xpress",
+        amount: totalDebitAmount,
+        status: "failed",
+        failureReason: xpressError.response?.data?.message || xpressError.message,
+        giver: {
+          phone: phonenumber,
+          cardId: selectCardCares,
+          customerId: giverCustomerId,
+        },
+        giveawayType: typesOfgiveawayText2,
+        hashtag: `#transfrcares_${hashTag}`,
+        reference: transactionNo,
+        paymentMethod: "xpress",
+        date,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: xpressError.response?.data?.message || "Giveaway transfer failed",
+        xpress: xpressError.response?.data || null,
+      });
+    }
+
+    const xpressData = xpressResponse.data;
+    if (!xpressData || xpressData.status === false) {
+      return res.status(400).json({ success: false, message: xpressData?.message || "Giveaway transfer failed" });
+    }
+
+    const xpressReference =
+      xpressData?.transfer?.reference ||
+      xpressData?.reference ||
+      xpressData?.transactionReference ||
+      transactionNo;
+
+    console.log("✅ Xpress giveaway transfer success:", xpressData);
+
+    // =====================================================
+    // 10. FETCH FRESH GIVER BALANCE
+    // =====================================================
+    let newGiverBalance = giverAvailableBalance - totalDebitAmount;
+    try {
+      const freshRes = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+        {
+          params: { customerId: giverCustomerId },
+          headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000
+        }
+      );
+      if (freshRes.data?.wallet?.availableBalance !== undefined) {
+        newGiverBalance = Number(freshRes.data.wallet.availableBalance);
+      }
+    } catch (refreshError) {
+      console.warn("Could not refresh giver balance:", refreshError.message);
+    }
+
+    // =====================================================
+    // 11. FIRESTORE WRITES (CHUNKED)
+    // =====================================================
+    const businessType = BUSINESS_TYPE_MAP[typesOfgiveawayText2] || typesOfgiveawayText2;
+    const simplifiedUsers = [];
+    const giveawayTimestamp = date;
+
+    const recipientChunks = [];
+    for (let i = 0; i < selectedUsers.length; i += RECIPIENTS_PER_BATCH) {
+      recipientChunks.push(selectedUsers.slice(i, i + RECIPIENTS_PER_BATCH));
+    }
+
+    for (let chunkIdx = 0; chunkIdx < recipientChunks.length; chunkIdx++) {
+      const chunk = recipientChunks[chunkIdx];
+      const batch = db.batch();
+
+      for (const user of chunk) {
+        const recipientCardRef = db.collection(cardtype).doc(user.cardNumber);
+        const recipientUserCardRef = db.collection("users").doc(user.phonenumber).collection(cardtype).doc(user.cardNumber);
+        const recipientUserRef = db.collection("users").doc(user.phonenumber);
+
+        const giveawayRef = recipientUserRef.collection("giveaways").doc();
+        const recipientTxnRef = recipientUserRef.collection("Transactions").doc();
+
+        const newBalance = Number(((user.balance || 0) + amountPerUser).toFixed(2));
+
+        batch.update(recipientCardRef, { balance: newBalance, updatedAt: giveawayTimestamp });
+        batch.update(recipientUserCardRef, { balance: newBalance, updatedAt: giveawayTimestamp });
+        batch.update(recipientUserRef, { receivedGiveaway: true });
+
+        batch.set(giveawayRef, {
+          typesOfgiveaway: typesOfgiveawayText2,
+          hashtag: `#transfrcares_${hashTag}`,
+          giverName: donorName,
+          goodwillMessages: goodwill,
+          createdAt: giveawayTimestamp,
+          phonenumber,
+          amountsent: Number(amountPerUser.toFixed(2)),
+          xpressReference,
+        });
+
+        batch.set(recipientTxnRef, {
+          type: "GiveawayReceived",
+          provider: "xpress",
+          status: "receiver",
+          balance: newBalance,
+          cardNumber: user.cardNumber,
+          amount: Number(amountPerUser.toFixed(2)),
+          balanceType: cardtype,
+          date: giveawayTimestamp,
+          firstname: "Transfr-Cares",
+          lastname: "",
+          businessType,
+          transactionNo,
+          reference: transactionNo,
+          cardType: cardtype,
+          paymentMethod: "xpress",
+          giverPhone: phonenumber,
+          giverName: donorName,
+          xpressReference,
+        });
+
+        simplifiedUsers.push({ phonenumber: user.phonenumber, code: textCode || null });
+      }
+
+      // Add the global gottenGiveaway update to the last chunk only
+      if (chunkIdx === recipientChunks.length - 1) {
+        if (simplifiedUsers.length > 0) {
+          batch.set(giveawayDocRef, { users: admin.firestore.FieldValue.arrayUnion(...simplifiedUsers) }, { merge: true });
+        }
+
+        // Giver transaction log
+        const giverTxnRef = giverUserRef.collection("Transactions").doc(transactionNo);
+        batch.set(giverTxnRef, {
+          type: "GiveawaySent",
+          provider: "xpress",
+          status: "sender",
+          amount: totalDebitAmount,
+          balanceAfter: newGiverBalance,
+          balanceBefore: giverAvailableBalance,
+          balanceType: "xpress_wallet",
+          cardNumber: selectCardCares,
+          cardType: cardtype,
+          paymentMethod: "xpress",
+          firstname: "Transfr-Cares",
+          lastname: "",
+          transactionNo,
+          reference: transactionNo,
+          recipientCount: simplifiedUsers.length,
+          amountPerUser: Number(amountPerUser.toFixed(2)),
+          giveawayType: typesOfgiveawayText2,
+          hashtag: `#transfrcares_${hashTag}`,
+          xpressReference,
+          date: giveawayTimestamp,
+        });
+
+        // Global transaction log
+        batch.set(txnRef, {
+          type: "Giveaway",
+          provider: "xpress",
+          amount: totalDebitAmount,
+          transactionNo,
+          reference: transactionNo,
+          xpressReference,
+          paymentMethod: "xpress",
+          status: "success",
+          giver: {
+            phone: phonenumber,
+            cardId: selectCardCares,
+            customerId: giverCustomerId,
+          },
+          giveawayType: typesOfgiveawayText2,
+          hashtag: `#transfrcares_${hashTag}`,
+          numberOfRecipients: simplifiedUsers.length,
+          amountPerUser: Number(amountPerUser.toFixed(2)),
+          remainingBalance,
+          giverBalanceAfter: newGiverBalance,
+          xpressData: xpressData,
+          date: giveawayTimestamp,
+        });
+
+        // Ledger
+        batch.set(db.collection("TransfrLedger").doc(transactionNo), {
+          reference: transactionNo,
+          type: "xpress_to_merchant_giveaway",
+          provider: "xpress",
+          amount: totalDebitAmount,
+          giverPhone: phonenumber,
+          giverCardId: selectCardCares,
+          giverCustomerId,
+          giveawayType: typesOfgiveawayText2,
+          recipientCount: simplifiedUsers.length,
+          amountPerUser: Number(amountPerUser.toFixed(2)),
+          remainingBalance,
+          giverBalanceAfter: newGiverBalance,
+          xpressReference,
+          status: "success",
+          createdAt: giveawayTimestamp,
+        });
+
+        // Notification flag for giver
+        batch.set(giverUserRef, { notification: true, inappnotification: true }, { merge: true });
+      }
+
+      await batch.commit();
+    }
+
+    // =====================================================
+    // 12. PUSH NOTIFICATIONS
+    // =====================================================
+    for (const user of selectedUsers) {
+      if (!user.fcm) continue;
+      try {
+        await messaging.send({
+          token: user.fcm,
+          notification: {
+            title: "You received a Transfr-Cares gift!",
+            body: `₦${amountPerUser.toFixed(2)} has been sent to your ${cardtype}.`,
+          },
+          data: {
+            type: "giveaway_received",
+            transactionNo,
+            amount: amountPerUser.toString(),
+          },
+        });
+      } catch (pushError) {
+        console.error("Push notification failed:", pushError.message);
+      }
+    }
+
+    // =====================================================
+    // 13. SUCCESS RESPONSE
+    // =====================================================
+    return res.status(200).json({
+      success: true,
+      message: "All monies sent to beneficiaries",
+      data: {
+        transactionNo,
+        xpressReference,
+        totalDebited: totalDebitAmount,
+        amountPerUser: Number(amountPerUser.toFixed(2)),
+        recipientCount: simplifiedUsers.length,
+        remainingBalance,
+        giverBalanceAfter: newGiverBalance,
+      },
+    });
+  } catch (error) {
+    console.error("Save-Giver Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "An error occurred",
+    });
+  }
+});
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
