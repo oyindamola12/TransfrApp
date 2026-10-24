@@ -5881,8 +5881,8 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
 
 app.post('/xpress-customer-data', async (req, res) => {
   try {
-    // We now need userId so we know which Firestore document to update
-    const { customerId, userId } = req.body;
+    // We now need userId AND cardId to save to the correct Card document
+    const { customerId, userId, cardId } = req.body;
 
     if (!customerId) {
       return res.status(400).json({ success: false, message: 'Missing customerId' });
@@ -5935,11 +5935,13 @@ app.post('/xpress-customer-data', async (req, res) => {
     });
 
     // ---------------------------------------------------
-    // 2. SAVE TO DATABASE IN THE BACKGROUND
+    // 2. SAVE TO DATABASE IN THE BACKGROUND (CARD COLLECTION)
     // ---------------------------------------------------
-    if (userId) {
+    if (userId && cardId) {
       db.collection("users")
         .doc(userId)
+        .collection("Cards")
+        .doc(cardId)
         .set(
           {
             xpress: {
@@ -5957,12 +5959,19 @@ app.post('/xpress-customer-data', async (req, res) => {
     console.error('Xpress wallet data error:', error.response?.data || error.message);
     
     // ---------------------------------------------------
-    // 3. FALLBACK: IF XPRESS FAILS, READ FROM FIRESTORE
+    // 3. FALLBACK: IF XPRESS FAILS, READ FROM CARD COLLECTION
     // ---------------------------------------------------
-    if (req.body.userId) {
+    const { userId, cardId, customerId } = req.body;
+    
+    if (userId && cardId) {
       try {
-        const userDoc = await db.collection("users").doc(req.body.userId).get();
-        const cachedData = userDoc.data()?.xpress;
+        const cardDoc = await db.collection("users")
+          .doc(userId)
+          .collection("Cards")
+          .doc(cardId)
+          .get();
+          
+        const cachedData = cardDoc.data()?.xpress;
 
         if (cachedData) {
           return res.status(200).json({
@@ -5970,7 +5979,7 @@ app.post('/xpress-customer-data', async (req, res) => {
             isCached: true, // Tell frontend this is old data
             data: {
               wallet: {
-                customerId: req.body.customerId,
+                customerId: customerId,
                 availableBalance: cachedData.availableBalance || 0,
                 bookedBalance: cachedData.bookedBalance || 0,
                 currency: "NGN",
