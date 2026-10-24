@@ -5881,14 +5881,13 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
 
 app.post('/xpress-customer-data', async (req, res) => {
   try {
-    // We now need userId AND cardId to save to the correct Card document
     const { customerId, userId, cardId } = req.body;
 
     if (!customerId) {
       return res.status(400).json({ success: false, message: 'Missing customerId' });
     }
 
-    // Call Xpress GET /wallet/customer?customerId=...
+    // 1. Call Xpress
     const response = await axios.get(
       `${process.env.XPRESS_BASE_URL}/wallet/customer`,
       {
@@ -5897,18 +5896,19 @@ app.post('/xpress-customer-data', async (req, res) => {
           'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
           'Content-Type': 'application/json',
         },
-        timeout: 15000 // Don't let the request hang
+        timeout: 15000
       }
     );
 
     const wallet = response.data?.wallet;
 
     if (!wallet) {
-      return res.status(404).json({ success: false, message: 'Wallet not found' });
+      return res.status(404).json({ success: false, message: 'Wallet not found on Xpress' });
     }
 
+    // 2. Map the data correctly
     const walletData = {
-      id: wallet.id,
+      walletId: wallet.id,
       accountNumber: wallet.accountNumber,
       accountName: wallet.accountName,
       bankName: wallet.bankName,
@@ -5926,41 +5926,45 @@ app.post('/xpress-customer-data', async (req, res) => {
       updatedAt: wallet.updatedAt,
     };
 
-    // ---------------------------------------------------
-    // 1. SEND RESPONSE TO FRONTEND INSTANTLY
-    // ---------------------------------------------------
+    // 3. Send response to frontend IMMEDIATELY
     res.status(200).json({
       success: true,
       data: { wallet: walletData },
     });
 
-    // ---------------------------------------------------
-    // 2. SAVE TO DATABASE IN THE BACKGROUND (CARD COLLECTION)
-    // ---------------------------------------------------
+    // 4. Save to Firestore in the background using .update()
     if (userId && cardId) {
+      // Update the specific Card document
       db.collection("users")
         .doc(userId)
         .collection("Cards")
         .doc(cardId)
-        .set(
-          {
-            xpress: {
-              availableBalance: walletData.availableBalance,
-              bookedBalance: walletData.bookedBalance,
-              lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
+        .update({
+          xpress: {
+            ...walletData,
+            lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-          { merge: true } // Merge true to not overwrite other xpress fields
-        )
-        .catch((dbErr) => console.error("Background DB save failed:", dbErr));
+        })
+        .catch((dbErr) => console.error("Card update failed:", dbErr));
+
+      // Optional: If you also want to update the root user document
+      db.collection("users")
+        .doc(userId)
+        .collection("Cards")
+        .doc(cardId)
+        .update({
+             xpress: {
+            ...walletData,
+            lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        })
+        .catch((dbErr) => console.error("User root update failed:", dbErr));
     }
 
   } catch (error) {
     console.error('Xpress wallet data error:', error.response?.data || error.message);
     
-    // ---------------------------------------------------
-    // 3. FALLBACK: IF XPRESS FAILS, READ FROM CARD COLLECTION
-    // ---------------------------------------------------
+    // Fallback: If Xpress is down, read from Firestore
     const { userId, cardId, customerId } = req.body;
     
     if (userId && cardId) {
@@ -5976,15 +5980,8 @@ app.post('/xpress-customer-data', async (req, res) => {
         if (cachedData) {
           return res.status(200).json({
             success: true,
-            isCached: true, // Tell frontend this is old data
-            data: {
-              wallet: {
-                customerId: customerId,
-                availableBalance: cachedData.availableBalance || 0,
-                bookedBalance: cachedData.bookedBalance || 0,
-                currency: "NGN",
-              }
-            },
+            isCached: true,
+            data: { wallet: cachedData },
           });
         }
       } catch (fallbackErr) {
