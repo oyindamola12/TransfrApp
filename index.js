@@ -9,8 +9,8 @@ const crypto = require("crypto");
 const CryptoJS = require( "crypto-js");
 require("dotenv").config(); 
 const app = express();
-const webhookRoutes = require('./routes/xpress/webhook');
-app.use(webhookRoutes);
+// const webhookRoutes = require('./routes/xpress/webhook');
+// app.use(webhookRoutes);
 const Flutterwave = require('flutterwave-node-v3');
 // const { type } = require("os");
 
@@ -4941,7 +4941,6 @@ const migrateTransfrCredit = async (userId, cardId, customerId, amount, referenc
   return result;
 };
 
-
 app.post("/create-xpress-wallet", async (req, res) => {
   try {
     const {
@@ -5067,7 +5066,7 @@ app.post("/create-xpress-wallet", async (req, res) => {
       walletId: wallet.id,
       accountNumber: wallet.accountNumber || '',
       accountName: wallet.accountName || '',
-      accountType: wallet.accountType || 'Nuban',
+      // accountType: wallet.accountType || 'Nuban',
       bankName: wallet.bankName || '',
       bankCode: wallet.bankCode || '',
       accountReference: wallet.accountReference || '',
@@ -5096,7 +5095,7 @@ app.post("/create-xpress-wallet", async (req, res) => {
       {
         xpress: xpressReference,
         nubanEnabled: true,
-        accountType: "xpress",
+        // accountType: "xpress",
         tier: customer.tier || "TIER_1",
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       },
@@ -5383,7 +5382,7 @@ app.post("/create-xpress-tier2-wallet", async (req, res) => {
       xpress: xpressReference,
       tier: "TIER_2",
       nubanEnabled: true,
-      accountType: "xpress",
+      // accountType: "xpress",
       passportPhoto: passportUrl,
       notification: true,
       inappnotification: true,
@@ -5713,7 +5712,7 @@ app.post("/create-xpress-tier3-wallet", async (req, res) => {
       xpress: xpressReference,
       tier: "TIER_3",
       nubanEnabled: true,
-      accountType: "xpress",
+      // accountType: "xpress",
       passportPhoto: passportUrl,
       utilityBill: utilityBillUrl,
       notification: true,
@@ -5934,6 +5933,70 @@ app.post('/xpress-customer-data', async (req, res) => {
   }
 });
 
+
+app.post('/xpress-customer-data2', async (req, res) => {
+  try {
+    const { customerId, userId, cardId } = req.body;
+
+    if (!customerId || !userId || !cardId) {
+      return res.status(400).json({ success: false, message: 'Missing required IDs' });
+    }
+
+    // 1. Fetch latest from Xpress
+    const response = await axios.get(
+      `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+      {
+        params: { customerId },
+        headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+        timeout: 15000
+      }
+    );
+
+    const wallet = response.data?.wallet;
+    if (!wallet) {
+      return res.status(404).json({ success: false, message: 'Wallet not found' });
+    }
+
+    const availableBalance = Number(wallet.availableBalance || 0);
+
+    // 2. Send response to frontend instantly
+    res.status(200).json({
+      success: true,
+      data: { wallet },
+    });
+
+    // 3. Update Firestore in the background using .update()
+    // (Because we know the exact Card ID from the frontend)
+    
+    // Update Card
+    db.collection("users")
+      .doc(userId)
+      .collection("Cards")
+      .doc(cardId)
+      .update({
+        'balance':availableBalance,
+        'xpress.availableBalance': availableBalance,
+        'xpress.lastSyncedAt': admin.firestore.FieldValue.serverTimestamp(),
+      })
+      .catch((err) => console.error("Card sync failed:", err));
+
+    // Update User Root
+    db.collection("users")
+      .doc(userId)
+      .collection("Cards")
+      .doc(cardId)
+      .update({
+        'balance':availableBalance,
+        'xpress.availableBalance': availableBalance,
+        'xpress.lastSyncedAt': admin.firestore.FieldValue.serverTimestamp(),
+      })
+      .catch((err) => console.error("User root sync failed:", err));
+
+  } catch (error) {
+    console.error('Xpress sync error:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch wallet data' });
+  }
+});
 app.post("/flutterwave-webhook", async (req, res) => {
   try {
     const event = req.body;
@@ -8194,8 +8257,6 @@ app.post("/flutterwave-webhook", async (req, res) => {
 //     });
 //   }
 // });
-
-
 
 app.post("/wallet-to-wallet", async (req, res) => {
   try {
@@ -11191,12 +11252,13 @@ app.post("/transfer-scan", async (req, res) => {
     // =====================================================
     // 1. VALIDATION
     // =====================================================
-    if (!senderPhone || !receiverPhone || !amount || !transactionNo) {
-      return res.status(400).json({
+    if (!senderPhone || !receiverPhone || !amount || !transactionNo||receiverCardNumber) {
+        return res.status(400).json({
         success: false,
-        message: "Missing required fields",
+        message: "Invalid card details from QR code",
       });
     }
+
 
     if (transferAmount <= 0) {
       return res.status(400).json({
@@ -14777,8 +14839,6 @@ app.post("/health-scan", async (req, res) => {
   
 // });
 
-
-
 app.post("/save-giver", async (req, res) => {
   const date = admin.firestore.FieldValue.serverTimestamp();
 
@@ -15270,6 +15330,97 @@ app.post("/save-giver", async (req, res) => {
     });
   }
 });
+
+app.post('/xpress/webhook', async (req, res) => {
+  try {
+    const { event, data } = req.body;
+    console.log(`📡 Webhook Received: [${event}]`);
+
+    // Check if it's a balance-altering event
+    if (
+      event === 'wallet.credited' || 
+      event === 'wallet.debited' || 
+      event === 'wallet.balance_updated' ||
+      event === 'transfer.received'
+    ) {
+      const { customerId } = data;
+
+      if (!customerId) {
+        return res.status(200).send('OK'); // No customer ID, ignore
+      }
+
+      // =====================================================
+      // 1. FIND THE CARD USING COLLECTION GROUP QUERY
+      // =====================================================
+      // Since customerId is inside the Cards subcollection, we query the collection group
+      const cardsSnapshot = await db.collectionGroup('Cards')
+        .where('xpress.customerId', '==', customerId)
+        .limit(1)
+        .get();
+
+      if (cardsSnapshot.empty) {
+        console.log(`⚠️ No card found with customerId: ${customerId}`);
+        return res.status(200).send('OK');
+      }
+
+      const cardDoc = cardsSnapshot.docs[0];
+      
+      // Get the parent User document from the Card
+      const userRef = cardDoc.ref.parent.parent; 
+      if (!userRef) {
+        console.log(`⚠️ Could not find parent user for card`);
+        return res.status(200).send('OK');
+      }
+
+      // =====================================================
+      // 2. USE XPRESS API TO GET FRESH BALANCE (Optional but safe)
+      // =====================================================
+      let newBalance = data.newBalance; // Fallback to webhook payload
+
+      try {
+        const xpressRes = await axios.get(
+          `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+          {
+            params: { customerId },
+            headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+            timeout: 10000
+          }
+        );
+        
+        if (xpressRes.data?.wallet?.availableBalance !== undefined) {
+          newBalance = xpressRes.data.wallet.availableBalance;
+        }
+      } catch (err) {
+        console.warn("⚠️ Webhook Xpress API check failed, using payload balance.");
+      }
+
+      // =====================================================
+      // 3. UPDATE FIRESTORE
+      // =====================================================
+      if (newBalance !== undefined) {
+        // Update the specific Card document
+        await cardDoc.ref.update({
+          'xpress.availableBalance': Number(newBalance),
+          'xpress.lastSyncedAt': admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Update the root User document for fast access
+        await userRef.update({
+          'xpress.availableBalance': Number(newBalance),
+          'xpress.lastSyncedAt': admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log(`✅ Real-time update: User ${userRef.id} balance is now ${newBalance}`);
+      }
+    }
+    
+    return res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook error:', error);
+    return res.status(200).send('OK');
+  }
+});
+
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
