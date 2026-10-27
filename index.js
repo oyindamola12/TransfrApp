@@ -11252,12 +11252,12 @@ app.post("/transfer-scan", async (req, res) => {
     // =====================================================
     // 1. VALIDATION
     // =====================================================
-   if (!senderCardNumber || !receiverCardNumber) {
-  return res.status(400).json({
-    success: false,
-    message: "Invalid card details from QR code", // or similar message
-  });
-}
+    if (!senderCardNumber || !receiverPhone || !amount || !transactionNo||!receiverCardNumber) {
+        return res.status(400).json({
+        success: false,
+        message: "Invalid card details from QR code",
+      });
+    }
 
 
     if (transferAmount <= 0) {
