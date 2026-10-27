@@ -12238,7 +12238,7 @@ app.post("/ticket-scan", async (req, res) => {
     // =====================================================
     // 1. VALIDATION
     // =====================================================
-    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo||ticketCardNumber) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -12987,7 +12987,7 @@ app.post("/voucher-scan", async (req, res) => {
     // =====================================================
     // 1. VALIDATION
     // =====================================================
-    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo||!voucherCardNumber) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -13782,7 +13782,7 @@ app.post("/health-scan", async (req, res) => {
     // =====================================================
     // 1. VALIDATION
     // =====================================================
-    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo) {
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo||!merchantCardNumber) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
