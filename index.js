@@ -12965,397 +12965,397 @@ app.post("/ticket-scan", async (req, res) => {
 //   }
 // });
 
-app.post("/voucher-scan", async (req, res) => {
-  try {
-    const {
-      redeemerPhone,
-      merchantPhone,
-      voucherCardNumber,
-      merchantCardNumber,
-      amount,
-      transactionNo,
-      businessType,
-      merchantname,
-      merchantLastname,
-      redeemerFirstname,
-      redeemerLastname,
-    } = req.body;
+// app.post("/voucher-scan", async (req, res) => {
+//   try {
+//     const {
+//       redeemerPhone,
+//       merchantPhone,
+//       voucherCardNumber,
+//       merchantCardNumber,
+//       amount,
+//       transactionNo,
+//       businessType,
+//       merchantname,
+//       merchantLastname,
+//       redeemerFirstname,
+//       redeemerLastname,
+//     } = req.body;
 
-    const redeemAmount = Number(amount);
-    const reference = transactionNo;
+//     const redeemAmount = Number(amount);
+//     const reference = transactionNo;
 
-    // =====================================================
-    // 1. VALIDATION
-    // =====================================================
-    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo||!voucherCardNumber) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields",
-      });
-    }
+//     // =====================================================
+//     // 1. VALIDATION
+//     // =====================================================
+//     if (!redeemerPhone || !merchantPhone || !amount || !transactionNo||!voucherCardNumber) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields",
+//       });
+//     }
 
-    if (redeemAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid amount",
-      });
-    }
+//     if (redeemAmount <= 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid amount",
+//       });
+//     }
 
-    // =====================================================
-    // 2. FIRESTORE REFERENCES
-    // =====================================================
-    const redeemerUserRef = db.collection("users").doc(redeemerPhone);
-    const merchantUserRef = db.collection("users").doc(merchantPhone);
+//     // =====================================================
+//     // 2. FIRESTORE REFERENCES
+//     // =====================================================
+//     const redeemerUserRef = db.collection("users").doc(redeemerPhone);
+//     const merchantUserRef = db.collection("users").doc(merchantPhone);
 
-    const voucherRef = redeemerUserRef.collection("voucher").doc(voucherCardNumber);
-    const merchantCardRef = merchantUserRef.collection("Cards").doc(merchantCardNumber);
+//     const voucherRef = redeemerUserRef.collection("voucher").doc(voucherCardNumber);
+//     const merchantCardRef = merchantUserRef.collection("Cards").doc(merchantCardNumber);
 
-    const txnRef = db.collection("AllTransaction").doc(reference);
+//     const txnRef = db.collection("AllTransaction").doc(reference);
 
-    // =====================================================
-    // 3. DUPLICATE CHECK
-    // =====================================================
-    const existingTxn = await txnRef.get();
-    if (existingTxn.exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate transaction detected",
-      });
-    }
+//     // =====================================================
+//     // 3. DUPLICATE CHECK
+//     // =====================================================
+//     const existingTxn = await txnRef.get();
+//     if (existingTxn.exists) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Duplicate transaction detected",
+//       });
+//     }
 
-    // =====================================================
-    // 4. FETCH REDEEMER, MERCHANT, VOUCHER, MERCHANT CARD
-    // =====================================================
-    const [voucherSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
-      voucherRef.get(),
-      merchantCardRef.get(),
-      merchantUserRef.get(),
-    ]);
+//     // =====================================================
+//     // 4. FETCH REDEEMER, MERCHANT, VOUCHER, MERCHANT CARD
+//     // =====================================================
+//     const [voucherSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
+//       voucherRef.get(),
+//       merchantCardRef.get(),
+//       merchantUserRef.get(),
+//     ]);
 
-    if (!voucherSnap.exists) {
-      return res.status(404).json({ success: false, message: "Voucher not found" });
-    }
-    if (!merchantUserSnap.exists) {
-      return res.status(404).json({ success: false, message: "Merchant not found" });
-    }
-    if (!merchantCardSnap.exists) {
-      return res.status(404).json({ success: false, message: "Merchant card not found" });
-    }
+//     if (!voucherSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Voucher not found" });
+//     }
+//     if (!merchantUserSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant not found" });
+//     }
+//     if (!merchantCardSnap.exists) {
+//       return res.status(404).json({ success: false, message: "Merchant card not found" });
+//     }
 
-    const voucherData = voucherSnap.data();
-    const merchantUserData = merchantUserSnap.data();
-    const merchantCardData = merchantCardSnap.data();
+//     const voucherData = voucherSnap.data();
+//     const merchantUserData = merchantUserSnap.data();
+//     const merchantCardData = merchantCardSnap.data();
 
-    const voucherBalance = Number(voucherData.balance || 0);
-    if (voucherBalance < redeemAmount) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient voucher balance",
-        available: voucherBalance,
-      });
-    }
+//     const voucherBalance = Number(voucherData.balance || 0);
+//     if (voucherBalance < redeemAmount) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Insufficient voucher balance",
+//         available: voucherBalance,
+//       });
+//     }
 
-    // =====================================================
-    // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
-    // =====================================================
-    const merchantCustomerId =
-      merchantCardData?.xpress?.customerId ||
-      merchantUserData?.xpress?.customerId ||
-      merchantUserData?.xpressMerchant?.customerId ||
-      merchantUserData?.xpressWallet?.customerId;
+//     // =====================================================
+//     // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
+//     // =====================================================
+//     const merchantCustomerId =
+//       merchantCardData?.xpress?.customerId ||
+//       merchantUserData?.xpress?.customerId ||
+//       merchantUserData?.xpressMerchant?.customerId ||
+//       merchantUserData?.xpressWallet?.customerId;
 
-    if (!merchantCustomerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Merchant does not have an Xpress wallet configured",
-      });
-    }
+//     if (!merchantCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Merchant does not have an Xpress wallet configured",
+//       });
+//     }
 
-    // =====================================================
-    // 6. CREDIT MERCHANT'S XPRESS WALLET
-    // =====================================================
-    // Platform's Xpress merchant wallet debits → merchant's Xpress wallet credits
-    let xpressResponse;
-    try {
-      xpressResponse = await axios.post(
-        `${process.env.XPRESS_BASE_URL}/wallet/credit`,
-        {
-          amount: redeemAmount,
-          reference,
-          customerId: merchantCustomerId,
-          metadata: {
-            firebaseUserId: merchantPhone,
-            redeemerPhone,
-            voucherCardNumber,
-            merchantCardNumber,
-            businessType: businessType || "voucher",
-            purpose: "voucher_redemption",
-            source: "transfr_app",
-          },
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 20000 // 👈 Added timeout
-        }
-      );
-    } catch (xpressError) {
-      console.error(
-        "XPRESS CREDIT ERROR:",
-        xpressError.response?.data || xpressError.message
-      );
+//     // =====================================================
+//     // 6. CREDIT MERCHANT'S XPRESS WALLET
+//     // =====================================================
+//     // Platform's Xpress merchant wallet debits → merchant's Xpress wallet credits
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+//         {
+//           amount: redeemAmount,
+//           reference,
+//           customerId: merchantCustomerId,
+//           metadata: {
+//             firebaseUserId: merchantPhone,
+//             redeemerPhone,
+//             voucherCardNumber,
+//             merchantCardNumber,
+//             businessType: businessType || "voucher",
+//             purpose: "voucher_redemption",
+//             source: "transfr_app",
+//           },
+//         },
+//         {
+//           headers: {
+//             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//           timeout: 20000 // 👈 Added timeout
+//         }
+//       );
+//     } catch (xpressError) {
+//       console.error(
+//         "XPRESS CREDIT ERROR:",
+//         xpressError.response?.data || xpressError.message
+//       );
 
-      // Log failed attempt for audit
-      await txnRef.set({
-        type: "VoucherRedemption",
-        provider: "xpress",
-        amount: redeemAmount,
-        status: "failed",
-        failureReason:
-          xpressError.response?.data?.message || xpressError.message,
-        redeemer: {
-          phone: redeemerPhone,
-          voucherCardNumber,
-        },
-        merchant: {
-          phone: merchantPhone,
-          cardId: merchantCardNumber,
-          customerId: merchantCustomerId,
-        },
-        reference,
-        paymentMethod: "voucher",
-        date: admin.firestore.FieldValue.serverTimestamp(),
-      });
+//       // Log failed attempt for audit
+//       await txnRef.set({
+//         type: "VoucherRedemption",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         status: "failed",
+//         failureReason:
+//           xpressError.response?.data?.message || xpressError.message,
+//         redeemer: {
+//           phone: redeemerPhone,
+//           voucherCardNumber,
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//         },
+//         reference,
+//         paymentMethod: "voucher",
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
 
-      return res.status(400).json({
-        success: false,
-        message:
-          xpressError.response?.data?.message ||
-          "Failed to credit merchant's Xpress wallet",
-        xpress: xpressError.response?.data || null,
-      });
-    }
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           xpressError.response?.data?.message ||
+//           "Failed to credit merchant's Xpress wallet",
+//         xpress: xpressError.response?.data || null,
+//       });
+//     }
 
-    // Verify Xpress success
-    if (!xpressResponse.data || xpressResponse.data.status === false) {
-      return res.status(400).json({
-        success: false,
-        message: xpressResponse.data?.message || "Xpress credit failed",
-        xpress: xpressResponse.data,
-      });
-    }
+//     // Verify Xpress success
+//     if (!xpressResponse.data || xpressResponse.data.status === false) {
+//       return res.status(400).json({
+//         success: false,
+//         message: xpressResponse.data?.message || "Xpress credit failed",
+//         xpress: xpressResponse.data,
+//       });
+//     }
 
-    const xpressData = xpressResponse.data;
-    const xpressReference =
-      xpressData?.reference ||
-      xpressData?.transactionReference ||
-      xpressData?.transactionId ||
-      reference;
+//     const xpressData = xpressResponse.data;
+//     const xpressReference =
+//       xpressData?.reference ||
+//       xpressData?.transactionReference ||
+//       xpressData?.transactionId ||
+//       reference;
 
-    console.log("✅ Xpress voucher redemption credit success:", xpressData);
+//     console.log("✅ Xpress voucher redemption credit success:", xpressData);
 
-    // =====================================================
-    // 7. FETCH FRESH MERCHANT BALANCE (for logging)
-    // =====================================================
-    let newMerchantWalletBalance = null;
-    try {
-      const freshRes = await axios.get(
-        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
-        {
-          params: { customerId: merchantCustomerId },
-          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
-          timeout: 15000 // 👈 Added timeout
-        }
-      );
-      if (freshRes.data?.wallet?.availableBalance !== undefined) {
-        newMerchantWalletBalance = Number(freshRes.data.wallet.availableBalance);
-      }
-    } catch (refreshError) {
-      console.warn("Could not refresh merchant balance:", refreshError.message);
-    }
+//     // =====================================================
+//     // 7. FETCH FRESH MERCHANT BALANCE (for logging)
+//     // =====================================================
+//     let newMerchantWalletBalance = null;
+//     try {
+//       const freshRes = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: merchantCustomerId },
+//           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//           timeout: 15000 // 👈 Added timeout
+//         }
+//       );
+//       if (freshRes.data?.wallet?.availableBalance !== undefined) {
+//         newMerchantWalletBalance = Number(freshRes.data.wallet.availableBalance);
+//       }
+//     } catch (refreshError) {
+//       console.warn("Could not refresh merchant balance:", refreshError.message);
+//     }
 
-    // =====================================================
-    // 8. FIRESTORE TRANSACTION
-    // =====================================================
-    let newVoucherBalance = 0;
+//     // =====================================================
+//     // 8. FIRESTORE TRANSACTION
+//     // =====================================================
+//     let newVoucherBalance = 0;
 
-    await db.runTransaction(async (tx) => {
-      // Re-read voucher to get latest balance
-      const freshVoucherSnap = await tx.get(voucherRef);
-      if (!freshVoucherSnap.exists) throw new Error("Voucher not found");
+//     await db.runTransaction(async (tx) => {
+//       // Re-read voucher to get latest balance
+//       const freshVoucherSnap = await tx.get(voucherRef);
+//       if (!freshVoucherSnap.exists) throw new Error("Voucher not found");
 
-      const freshVoucherData = freshVoucherSnap.data();
-      const latestVoucherBalance = Number(freshVoucherData.balance || 0);
-      if (latestVoucherBalance < redeemAmount) {
-        throw new Error("Insufficient voucher balance");
-      }
+//       const freshVoucherData = freshVoucherSnap.data();
+//       const latestVoucherBalance = Number(freshVoucherData.balance || 0);
+//       if (latestVoucherBalance < redeemAmount) {
+//         throw new Error("Insufficient voucher balance");
+//       }
 
-      newVoucherBalance = latestVoucherBalance - redeemAmount;
+//       newVoucherBalance = latestVoucherBalance - redeemAmount;
 
-      // 1. Deduct voucher balance (Firestore is authoritative for vouchers)
-      tx.update(voucherRef, {
-        balance: newVoucherBalance,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+//       // 1. Deduct voucher balance (Firestore is authoritative for vouchers)
+//       tx.update(voucherRef, {
+//         balance: newVoucherBalance,
+//         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
 
-      // 2. Notification flags
-      tx.set(redeemerUserRef, { notification: true }, { merge: true });
-      tx.set(
-        merchantUserRef,
-        { notification: true, inappnotification: true },
-        { merge: true }
-      );
+//       // 2. Notification flags
+//       tx.set(redeemerUserRef, { notification: true }, { merge: true });
+//       tx.set(
+//         merchantUserRef,
+//         { notification: true, inappnotification: true },
+//         { merge: true }
+//       );
 
-      // 3. Redeemer transaction log
-      tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
-        type: "VoucherRedemption",
-        provider: "xpress",
-        status: "redeem",
-        amount: redeemAmount,
-        balance: newVoucherBalance,
-        balanceBefore: latestVoucherBalance,
-        balanceType: "voucher",
-        cardNumber: voucherCardNumber,
-        cardType: "voucher",
-        paymentMethod: "voucher",
-        businessType: businessType || "voucher",
-        transactionNo: reference,
-        reference,
-        merchantPhone,
-        merchantCardNumber,
-        merchantCustomerId,
-        redeemerFirstName: redeemerFirstname || "",
-        redeemerLastName: redeemerLastname || "",
-        xpressReference,
-        date: admin.firestore.FieldValue.serverTimestamp(),
-      });
+//       // 3. Redeemer transaction log
+//       tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
+//         type: "VoucherRedemption",
+//         provider: "xpress",
+//         status: "redeem",
+//         amount: redeemAmount,
+//         balance: newVoucherBalance,
+//         balanceBefore: latestVoucherBalance,
+//         balanceType: "voucher",
+//         cardNumber: voucherCardNumber,
+//         cardType: "voucher",
+//         paymentMethod: "voucher",
+//         businessType: businessType || "voucher",
+//         transactionNo: reference,
+//         reference,
+//         merchantPhone,
+//         merchantCardNumber,
+//         merchantCustomerId,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
 
-      // 4. Merchant transaction log
-      tx.set(merchantUserRef.collection("Transactions").doc(reference), {
-        type: "VoucherRedemptionReceived",
-        provider: "xpress",
-        status: "merchant",
-        amount: redeemAmount,
-        balance: newMerchantWalletBalance,
-        balanceType: "xpress_wallet",
-        cardNumber: merchantCardNumber,
-        cardType: merchantCardData.cardType || "merchant",
-        paymentMethod: "voucher",
-        businessType: businessType || "voucher",
-        transactionNo: reference,
-        reference,
-        redeemerPhone,
-        redeemerFirstName: redeemerFirstname || "",
-        redeemerLastName: redeemerLastname || "",
-        merchantCustomerId,
-        xpressReference,
-        date: admin.firestore.FieldValue.serverTimestamp(),
-      });
+//       // 4. Merchant transaction log
+//       tx.set(merchantUserRef.collection("Transactions").doc(reference), {
+//         type: "VoucherRedemptionReceived",
+//         provider: "xpress",
+//         status: "merchant",
+//         amount: redeemAmount,
+//         balance: newMerchantWalletBalance,
+//         balanceType: "xpress_wallet",
+//         cardNumber: merchantCardNumber,
+//         cardType: merchantCardData.cardType || "merchant",
+//         paymentMethod: "voucher",
+//         businessType: businessType || "voucher",
+//         transactionNo: reference,
+//         reference,
+//         redeemerPhone,
+//         redeemerFirstName: redeemerFirstname || "",
+//         redeemerLastName: redeemerLastname || "",
+//         merchantCustomerId,
+//         xpressReference,
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
 
-      // 5. Global transaction log
-      tx.set(txnRef, {
-        type: "VoucherRedemption",
-        provider: "xpress",
-        amount: redeemAmount,
-        businessType: businessType || "voucher",
-        cardType: "voucher",
-        transactionNo: reference,
-        reference,
-        xpressReference,
-        paymentMethod: "voucher",
-        status: "success",
-        redeemer: {
-          phone: redeemerPhone,
-          voucherCardNumber,
-          firstname: redeemerFirstname || "",
-          lastname: redeemerLastname || "",
-        },
-        merchant: {
-          phone: merchantPhone,
-          cardId: merchantCardNumber,
-          customerId: merchantCustomerId,
-          firstname: merchantname || "",
-          lastname: merchantLastname || "",
-        },
-        voucherBalanceAfter: newVoucherBalance,
-        merchantBalanceAfter: newMerchantWalletBalance,
-        xpressData: xpressData, // Use the saved variable here
-        date: admin.firestore.FieldValue.serverTimestamp(),
-      });
+//       // 5. Global transaction log
+//       tx.set(txnRef, {
+//         type: "VoucherRedemption",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         businessType: businessType || "voucher",
+//         cardType: "voucher",
+//         transactionNo: reference,
+//         reference,
+//         xpressReference,
+//         paymentMethod: "voucher",
+//         status: "success",
+//         redeemer: {
+//           phone: redeemerPhone,
+//           voucherCardNumber,
+//           firstname: redeemerFirstname || "",
+//           lastname: redeemerLastname || "",
+//         },
+//         merchant: {
+//           phone: merchantPhone,
+//           cardId: merchantCardNumber,
+//           customerId: merchantCustomerId,
+//           firstname: merchantname || "",
+//           lastname: merchantLastname || "",
+//         },
+//         voucherBalanceAfter: newVoucherBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressData: xpressData, // Use the saved variable here
+//         date: admin.firestore.FieldValue.serverTimestamp(),
+//       });
 
-      // 6. Ledger entry (audit)
-      tx.set(db.collection("TransfrLedger").doc(reference), {
-        reference,
-        type: "voucher_redemption_to_xpress_wallet",
-        provider: "xpress",
-        amount: redeemAmount,
-        redeemerPhone,
-        merchantPhone,
-        voucherCardId: voucherCardNumber,
-        merchantCardId: merchantCardNumber,
-        merchantCustomerId,
-        voucherBalanceBefore: latestVoucherBalance,
-        voucherBalanceAfter: newVoucherBalance,
-        merchantBalanceAfter: newMerchantWalletBalance,
-        xpressReference,
-        status: "success",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    });
+//       // 6. Ledger entry (audit)
+//       tx.set(db.collection("TransfrLedger").doc(reference), {
+//         reference,
+//         type: "voucher_redemption_to_xpress_wallet",
+//         provider: "xpress",
+//         amount: redeemAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         voucherCardId: voucherCardNumber,
+//         merchantCardId: merchantCardNumber,
+//         merchantCustomerId,
+//         voucherBalanceBefore: latestVoucherBalance,
+//         voucherBalanceAfter: newVoucherBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         xpressReference,
+//         status: "success",
+//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//     });
 
-    // =====================================================
-    // 9. PUSH NOTIFICATION TO MERCHANT
-    // =====================================================
-    const merchantToken = merchantUserData?.fcm;
-    if (merchantToken) {
-      try {
-        await messaging.send({
-          token: merchantToken,
-          notification: {
-            title: "Voucher Redeemed 🎟️",
-            body: `₦${redeemAmount.toLocaleString()} received from ${redeemerFirstname || redeemerPhone}`,
-          },
-          data: {
-            type: "voucher_redemption",
-            transactionNo: reference,
-            amount: redeemAmount.toString(),
-          },
-        });
-      } catch (pushError) {
-        console.error("Push notification failed:", pushError);
-      }
-    }
+//     // =====================================================
+//     // 9. PUSH NOTIFICATION TO MERCHANT
+//     // =====================================================
+//     const merchantToken = merchantUserData?.fcm;
+//     if (merchantToken) {
+//       try {
+//         await messaging.send({
+//           token: merchantToken,
+//           notification: {
+//             title: "Voucher Redeemed 🎟️",
+//             body: `₦${redeemAmount.toLocaleString()} received from ${redeemerFirstname || redeemerPhone}`,
+//           },
+//           data: {
+//             type: "voucher_redemption",
+//             transactionNo: reference,
+//             amount: redeemAmount.toString(),
+//           },
+//         });
+//       } catch (pushError) {
+//         console.error("Push notification failed:", pushError);
+//       }
+//     }
 
-    // =====================================================
-    // 10. SUCCESS RESPONSE
-    // =====================================================
-    return res.status(200).json({
-      success: true,
-      message: "Voucher redeemed and merchant wallet credited",
-      data: {
-        transactionNo: reference,
-        xpressReference,
-        amount: redeemAmount,
-        redeemerPhone,
-        merchantPhone,
-        merchantCustomerId,
-        voucherBalanceAfter: newVoucherBalance,
-        merchantBalanceAfter: newMerchantWalletBalance,
-        status: "success",
-        transferType: "voucher_redemption",
-      },
-    });
+//     // =====================================================
+//     // 10. SUCCESS RESPONSE
+//     // =====================================================
+//     return res.status(200).json({
+//       success: true,
+//       message: "Voucher redeemed and merchant wallet credited",
+//       data: {
+//         transactionNo: reference,
+//         xpressReference,
+//         amount: redeemAmount,
+//         redeemerPhone,
+//         merchantPhone,
+//         merchantCustomerId,
+//         voucherBalanceAfter: newVoucherBalance,
+//         merchantBalanceAfter: newMerchantWalletBalance,
+//         status: "success",
+//         transferType: "voucher_redemption",
+//       },
+//     });
 
-  } catch (error) {
-    console.error("Redeem voucher error:", error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: error.response?.data?.message || error.message || "Voucher redemption failed",
-    });
-  }
-});
+//   } catch (error) {
+//     console.error("Redeem voucher error:", error.response?.data || error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || "Voucher redemption failed",
+//     });
+//   }
+// });
 
 // app.post("/health-scan", async (req, res) => {
 //   try {
@@ -13759,7 +13759,379 @@ app.post("/voucher-scan", async (req, res) => {
 // ROUTE: /save-giver
 // =====================================================
 
+app.post("/voucher-scan", async (req, res) => {
+  try {
+    const {
+      redeemerPhone,
+      merchantPhone,
+      voucherCardNumber,
+      merchantCardNumber,
+      amount,
+      transactionNo,
+      businessType,
+      merchantname,
+      merchantLastname,
+      redeemerFirstname,
+      redeemerLastname,
+    } = req.body;
 
+    const redeemAmount = Number(amount);
+    const reference = transactionNo;
+
+    // =====================================================
+    // 1. VALIDATION
+    // =====================================================
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo || !voucherCardNumber || !merchantCardNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    if (redeemAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount",
+      });
+    }
+
+    // =====================================================
+    // 2. FIRESTORE REFERENCES & QUERIES
+    // =====================================================
+    const redeemerUserRef = db.collection("users").doc(redeemerPhone);
+    const merchantUserRef = db.collection("users").doc(merchantPhone);
+    const txnRef = db.collection("AllTransaction").doc(reference);
+
+    // Duplicate check
+    const existingTxn = await txnRef.get();
+    if (existingTxn.exists) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate transaction detected",
+      });
+    }
+
+    // Use .where() to find the documents by the cardNumber field
+    const [merchantUserSnap, voucherQuery, merchantCardQuery] = await Promise.all([
+      merchantUserRef.get(),
+      redeemerUserRef.collection("voucher").where("cardNumber", "==", voucherCardNumber).limit(1).get(),
+      merchantUserRef.collection("Cards").where("cardNumber", "==", merchantCardNumber).limit(1).get()
+    ]);
+
+    if (!merchantUserSnap.exists) {
+      return res.status(404).json({ success: false, message: "Merchant user not found" });
+    }
+    if (voucherQuery.empty) {
+      return res.status(404).json({ success: false, message: "Voucher not found in database" });
+    }
+    if (merchantCardQuery.empty) {
+      return res.status(404).json({ success: false, message: "Merchant card not found in database" });
+    }
+
+    // Extract the actual references and snapshots from the query results
+    const voucherRef = voucherQuery.docs[0].ref;
+    const voucherSnap = voucherQuery.docs[0];
+
+    const merchantCardRef = merchantCardQuery.docs[0].ref;
+    const merchantCardSnap = merchantCardQuery.docs[0];
+
+    const voucherData = voucherSnap.data();
+    const merchantUserData = merchantUserSnap.data();
+    const merchantCardData = merchantCardSnap.data();
+
+    // Check balance
+    const voucherBalance = Number(voucherData.balance || 0);
+    if (voucherBalance < redeemAmount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient voucher balance",
+        available: voucherBalance,
+      });
+    }
+
+    // =====================================================
+    // 3. RESOLVE MERCHANT XPRESS CUSTOMER ID
+    // =====================================================
+    const merchantCustomerId =
+      merchantCardData?.xpress?.customerId ||
+      merchantUserData?.xpress?.customerId ||
+      merchantUserData?.xpressMerchant?.customerId ||
+      merchantUserData?.xpressWallet?.customerId;
+
+    if (!merchantCustomerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Merchant does not have an Xpress wallet configured",
+      });
+    }
+
+    // =====================================================
+    // 4. CREDIT MERCHANT'S XPRESS WALLET
+    // =====================================================
+    let xpressResponse;
+    try {
+      xpressResponse = await axios.post(
+        `${process.env.XPRESS_BASE_URL}/wallet/credit`,
+        {
+          amount: redeemAmount,
+          reference,
+          customerId: merchantCustomerId,
+          metadata: {
+            firebaseUserId: merchantPhone,
+            redeemerPhone,
+            voucherCardNumber,
+            merchantCardNumber,
+            businessType: businessType || "voucher",
+            purpose: "voucher_redemption",
+            source: "transfr_app",
+          },
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 20000 
+        }
+      );
+    } catch (xpressError) {
+      console.error("XPRESS CREDIT ERROR:", xpressError.response?.data || xpressError.message);
+
+      // Log failed attempt for audit
+      await txnRef.set({
+        type: "VoucherRedemption",
+        provider: "xpress",
+        amount: redeemAmount,
+        status: "failed",
+        failureReason: xpressError.response?.data?.message || xpressError.message,
+        redeemer: { phone: redeemerPhone, voucherCardNumber },
+        merchant: { phone: merchantPhone, cardId: merchantCardNumber, customerId: merchantCustomerId },
+        reference,
+        paymentMethod: "voucher",
+        date: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: xpressError.response?.data?.message || "Failed to credit merchant's Xpress wallet",
+        xpress: xpressError.response?.data || null,
+      });
+    }
+
+    // Verify Xpress success
+    if (!xpressResponse.data || xpressResponse.data.status === false) {
+      return res.status(400).json({
+        success: false,
+        message: xpressResponse.data?.message || "Xpress credit failed",
+        xpress: xpressResponse.data,
+      });
+    }
+
+    const xpressData = xpressResponse.data;
+    const xpressReference =
+      xpressData?.reference ||
+      xpressData?.transactionReference ||
+      xpressData?.transactionId ||
+      reference;
+
+    console.log("✅ Xpress voucher redemption credit success:", xpressData);
+
+    // =====================================================
+    // 5. FETCH FRESH MERCHANT BALANCE (for logging)
+    // =====================================================
+    let newMerchantWalletBalance = null;
+    try {
+      const freshRes = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+        {
+          params: { customerId: merchantCustomerId },
+          headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000 
+        }
+      );
+      if (freshRes.data?.wallet?.availableBalance !== undefined) {
+        newMerchantWalletBalance = Number(freshRes.data.wallet.availableBalance);
+      }
+    } catch (refreshError) {
+      console.warn("Could not refresh merchant balance:", refreshError.message);
+    }
+
+    // =====================================================
+    // 6. FIRESTORE TRANSACTION (Deduct Voucher)
+    // =====================================================
+    let newVoucherBalance = 0;
+
+    await db.runTransaction(async (tx) => {
+      // Re-read voucher to get latest balance
+      const freshVoucherSnap = await tx.get(voucherRef);
+      if (!freshVoucherSnap.exists) throw new Error("Voucher not found");
+
+      const freshVoucherData = freshVoucherSnap.data();
+      const latestVoucherBalance = Number(freshVoucherData.balance || 0);
+      if (latestVoucherBalance < redeemAmount) {
+        throw new Error("Insufficient voucher balance");
+      }
+
+      newVoucherBalance = latestVoucherBalance - redeemAmount;
+
+      // 1. Deduct voucher balance (Firestore is authoritative for vouchers)
+      tx.update(voucherRef, {
+        balance: newVoucherBalance,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 2. Notification flags
+      tx.set(redeemerUserRef, { notification: true }, { merge: true });
+      tx.set(merchantUserRef, { notification: true, inappnotification: true }, { merge: true });
+
+      // 3. Redeemer transaction log
+      tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
+        type: "VoucherRedemption",
+        provider: "xpress",
+        status: "redeem",
+        amount: redeemAmount,
+        balance: newVoucherBalance,
+        balanceBefore: latestVoucherBalance,
+        balanceType: "voucher",
+        cardNumber: voucherCardNumber,
+        cardType: "voucher",
+        paymentMethod: "voucher",
+        businessType: businessType || "voucher",
+        transactionNo: reference,
+        reference,
+        merchantPhone,
+        merchantCardNumber,
+        merchantCustomerId,
+        redeemerFirstName: redeemerFirstname || "",
+        redeemerLastName: redeemerLastname || "",
+        xpressReference,
+        date: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 4. Merchant transaction log
+      tx.set(merchantUserRef.collection("Transactions").doc(reference), {
+        type: "VoucherRedemptionReceived",
+        provider: "xpress",
+        status: "merchant",
+        amount: redeemAmount,
+        balance: newMerchantWalletBalance,
+        balanceType: "xpress_wallet",
+        cardNumber: merchantCardNumber,
+        cardType: merchantCardData.cardType || "merchant",
+        paymentMethod: "voucher",
+        businessType: businessType || "voucher",
+        transactionNo: reference,
+        reference,
+        redeemerPhone,
+        redeemerFirstName: redeemerFirstname || "",
+        redeemerLastName: redeemerLastname || "",
+        merchantCustomerId,
+        xpressReference,
+        date: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 5. Global transaction log
+      tx.set(txnRef, {
+        type: "VoucherRedemption",
+        provider: "xpress",
+        amount: redeemAmount,
+        businessType: businessType || "voucher",
+        cardType: "voucher",
+        transactionNo: reference,
+        reference,
+        xpressReference,
+        paymentMethod: "voucher",
+        status: "success",
+        redeemer: {
+          phone: redeemerPhone,
+          voucherCardNumber,
+          firstname: redeemerFirstname || "",
+          lastname: redeemerLastname || "",
+        },
+        merchant: {
+          phone: merchantPhone,
+          cardId: merchantCardNumber,
+          customerId: merchantCustomerId,
+          firstname: merchantname || "",
+          lastname: merchantLastname || "",
+        },
+        voucherBalanceAfter: newVoucherBalance,
+        merchantBalanceAfter: newMerchantWalletBalance,
+        xpressData: xpressData,
+        date: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 6. Ledger entry (audit)
+      tx.set(db.collection("TransfrLedger").doc(reference), {
+        reference,
+        type: "voucher_redemption_to_xpress_wallet",
+        provider: "xpress",
+        amount: redeemAmount,
+        redeemerPhone,
+        merchantPhone,
+        voucherCardId: voucherCardNumber,
+        merchantCardId: merchantCardNumber,
+        merchantCustomerId,
+        voucherBalanceBefore: latestVoucherBalance,
+        voucherBalanceAfter: newVoucherBalance,
+        merchantBalanceAfter: newMerchantWalletBalance,
+        xpressReference,
+        status: "success",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // =====================================================
+    // 7. PUSH NOTIFICATION TO MERCHANT
+    // =====================================================
+    const merchantToken = merchantUserData?.fcm;
+    if (merchantToken) {
+      try {
+        await messaging.send({
+          token: merchantToken,
+          notification: {
+            title: "Voucher Redeemed 🎟️",
+            body: `₦${redeemAmount.toLocaleString()} received from ${redeemerFirstname || redeemerPhone}`,
+          },
+          data: {
+            type: "voucher_redemption",
+            transactionNo: reference,
+            amount: redeemAmount.toString(),
+          },
+        });
+      } catch (pushError) {
+        console.error("Push notification failed:", pushError);
+      }
+    }
+
+    // =====================================================
+    // 8. SUCCESS RESPONSE
+    // =====================================================
+    return res.status(200).json({
+      success: true,
+      message: "Voucher redeemed and merchant wallet credited",
+      data: {
+        transactionNo: reference,
+        xpressReference,
+        amount: redeemAmount,
+        redeemerPhone,
+        merchantPhone,
+        merchantCustomerId,
+        voucherBalanceAfter: newVoucherBalance,
+        merchantBalanceAfter: newMerchantWalletBalance,
+        status: "success",
+        transferType: "voucher_redemption",
+      },
+    });
+
+  } catch (error) {
+    console.error("Redeem voucher error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || error.message || "Voucher redemption failed",
+    });
+  }
+});
 app.post("/health-scan", async (req, res) => {
   try {
     const {
