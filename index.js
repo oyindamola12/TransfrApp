@@ -1884,7 +1884,7 @@ app.post('/register-merchant', async (req, res) => {
       businessName,
       businessAddress,
       businessType, // "restaurant", "store", "event planner", "transporter/okada"
-      cardNo,
+      cardNo,       // This is the ID of the existing card in the Cards collection
       fcmToken,
       bvnMerchant,
       imageBase64,
@@ -1900,21 +1900,23 @@ app.post('/register-merchant', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid business type' });
     }
 
-    // Check if merchant already exists
+    // Check if user already has a merchant card
     const snapshot = await admin.firestore()
-      .collection('Merchant')
-      .where('phonenumber', '==', phonenumber)
+      .collection('users')
+      .doc(phonenumber)
+      .collection('Cards')
+      .where('cardType', '==', 'merchant')
       .get();
 
     if (!snapshot.empty) {
-      return res.status(400).json({ success: false, message: 'Merchant already registered' });
+      return res.status(400).json({ success: false, message: 'User already has a merchant card registered' });
     }
 
     // --- Upload image ---
     const filename = `merchant_${phonenumber}_${Date.now()}.jpg`;
     const imageUrl = await uploadImage(imageBase64, filename);
 
-    // Map businessType to internal type
+    // Map businessType to internal type (for ticket-based businesses)
     let mappedType = businessType;
     if (businessType === 'event planner' || businessType === 'transporter/okada') {
       mappedType = 'ticket';
@@ -1925,73 +1927,51 @@ app.post('/register-merchant', async (req, res) => {
     // --- Firestore Batch ---
     const batch = admin.firestore().batch();
 
-    // 1. User's Merchant subcollection
-    const userMerchantRef = admin.firestore()
+    // References to the existing card collections
+    const userCardRef = admin.firestore()
       .collection('users')
       .doc(phonenumber)
-      .collection('Merchant')
+      .collection('Cards')
       .doc(cardNo);
 
-    batch.set(userMerchantRef, {
-      cardNumber: cardNo,
-      balance: 0,
-      createdAt: timestamp,
-      cardName: 'Merchant Card',
-      lastname: lastname || '',
-      firstname: firstname || '',
+    const globalCardRef = admin.firestore()
+      .collection('Cards')
+      .doc(cardNo);
+
+    // 1. Upgrade the user's existing card to a Merchant card
+    // Using { merge: true } ensures we don't overwrite the existing balance/xpress details
+    batch.set(userCardRef, {
+      cardType: 'merchant', // 👈 Upgrade the type
+      businessAddress,
+      businessName,
+      businessType: mappedType,
+      imageUrl,
       bvnMerchant: bvnMerchant || '',
-      phonenumber,
+      firstname: firstname || '',
+      lastname: lastname || '',
       fcm: fcmToken || '',
-      notification: false,
+      updatedAt: timestamp,
+    }, { merge: true });
+
+    // 2. Update global card collection
+    batch.set(globalCardRef, {
       cardType: 'merchant',
       businessAddress,
       businessName,
       businessType: mappedType,
       imageUrl,
-    });
+      updatedAt: timestamp,
+    }, { merge: true });
 
-    // 2. Update user's document (posactivated)
+    // 3. Update user's root document (posactivated flag)
     const userRef = admin.firestore().collection('users').doc(phonenumber);
-    batch.set(userRef, { posactivated: true }, { merge: true });
-
-    // 3. Global Merchants collection
-    const merchantGlobalRef = admin.firestore().collection('Merchants').doc(cardNo);
-    batch.set(merchantGlobalRef, {
-      lastname: lastname || '',
-      firstname: firstname || '',
-      businessAddress,
-      businessName,
-      businessType: mappedType,
-      imageUrl,
-      phonenumber,
-      cardNumber: cardNo,
-      createdAt: timestamp,
-    });
-
-    // 4. MerchantCards collection (global card)
-    const merchantCardRef = admin.firestore().collection('MerchantCards').doc(cardNo);
-    batch.set(merchantCardRef, {
-      cardNumber: cardNo,
-      balance: 0,
-      createdAt: timestamp,
-      cardName: 'Merchant Card',
-      lastname: lastname || '',
-      firstname: firstname || '',
-      phonenumber,
-      fcm: fcmToken || '',
-      notification: false,
-      cardType: 'merchant',
-      businessType: mappedType,
-      businessAddress,
-      businessName,
-      imageUrl,
-    });
+    batch.set(userRef, { posactivated: true, updatedAt: timestamp }, { merge: true });
 
     await batch.commit();
 
     return res.status(201).json({
       success: true,
-      message: 'Merchant registered successfully',
+      message: 'Card upgraded to Merchant successfully',
       data: { imageUrl, cardNo, businessType: mappedType },
     });
 
@@ -12238,7 +12218,8 @@ app.post("/ticket-scan", async (req, res) => {
     // =====================================================
     // 1. VALIDATION
     // =====================================================
-    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo||ticketCardNumber) {
+    // 👈 FIXED: Changed '||ticketCardNumber' to '|| !ticketCardNumber' and added merchant check
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo || !ticketCardNumber || !merchantCardNumber) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -12253,19 +12234,13 @@ app.post("/ticket-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 2. FIRESTORE REFERENCES
+    // 2. FIRESTORE REFERENCES & QUERIES
     // =====================================================
     const redeemerUserRef = db.collection("users").doc(redeemerPhone);
     const merchantUserRef = db.collection("users").doc(merchantPhone);
-
-    const ticketRef = redeemerUserRef.collection("tickets").doc(ticketCardNumber);
-    const merchantCardRef = merchantUserRef.collection("Cards").doc(merchantCardNumber);
-
     const txnRef = db.collection("AllTransaction").doc(reference);
 
-    // =====================================================
-    // 3. DUPLICATE CHECK
-    // =====================================================
+    // Duplicate check
     const existingTxn = await txnRef.get();
     if (existingTxn.exists) {
       return res.status(400).json({
@@ -12274,18 +12249,29 @@ app.post("/ticket-scan", async (req, res) => {
       });
     }
 
-    // =====================================================
-    // 4. FETCH DATA
-    // =====================================================
-    const [ticketSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
-      ticketRef.get(),
-      merchantCardRef.get(),
+    // 👈 FIXED: Use .where() to find the documents by the cardNumber field
+    const [merchantUserSnap, ticketQuery, merchantCardQuery] = await Promise.all([
       merchantUserRef.get(),
+      redeemerUserRef.collection("tickets").where("cardNumber", "==", ticketCardNumber).limit(1).get(),
+      merchantUserRef.collection("Cards").where("cardNumber", "==", merchantCardNumber).limit(1).get()
     ]);
 
-    if (!ticketSnap.exists) return res.status(404).json({ success: false, message: "Ticket not found" });
-    if (!merchantUserSnap.exists) return res.status(404).json({ success: false, message: "Merchant not found" });
-    if (!merchantCardSnap.exists) return res.status(404).json({ success: false, message: "Merchant card not found" });
+    if (!merchantUserSnap.exists) {
+      return res.status(404).json({ success: false, message: "Merchant user not found" });
+    }
+    if (ticketQuery.empty) {
+      return res.status(404).json({ success: false, message: "Ticket not found in database" });
+    }
+    if (merchantCardQuery.empty) {
+      return res.status(404).json({ success: false, message: "Merchant card not found in database" });
+    }
+
+    // Extract the actual references and snapshots from the query results
+    const ticketRef = ticketQuery.docs[0].ref;
+    const ticketSnap = ticketQuery.docs[0];
+
+    const merchantCardRef = merchantCardQuery.docs[0].ref;
+    const merchantCardSnap = merchantCardQuery.docs[0];
 
     const ticketData = ticketSnap.data();
     const merchantUserData = merchantUserSnap.data();
@@ -12301,9 +12287,8 @@ app.post("/ticket-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
+    // 3. RESOLVE MERCHANT XPRESS CUSTOMER ID
     // =====================================================
-    // We just need the customerId. No Nuban check required.
     const merchantCustomerId =
       merchantCardData?.xpress?.customerId ||
       merchantUserData?.xpress?.customerId ||
@@ -12318,7 +12303,7 @@ app.post("/ticket-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 6. CREDIT MERCHANT'S XPRESS WALLET
+    // 4. CREDIT MERCHANT'S XPRESS WALLET
     // =====================================================
     let xpressResponse;
     try {
@@ -12343,7 +12328,7 @@ app.post("/ticket-scan", async (req, res) => {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json',
           },
-          timeout: 20000 // 👈 Added timeout
+          timeout: 20000 
         }
       );
     } catch (xpressError) {
@@ -12383,7 +12368,7 @@ app.post("/ticket-scan", async (req, res) => {
     console.log("✅ Xpress ticket redemption credit success:", xpressData);
 
     // =====================================================
-    // 7. FETCH FRESH MERCHANT BALANCE (for logging)
+    // 5. FETCH FRESH MERCHANT BALANCE (for logging)
     // =====================================================
     let newMerchantWalletBalance = null;
     try {
@@ -12392,7 +12377,7 @@ app.post("/ticket-scan", async (req, res) => {
         {
           params: { customerId: merchantCustomerId },
           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
-          timeout: 15000 // 👈 Added timeout
+          timeout: 15000
         }
       );
       if (freshRes.data?.wallet?.availableBalance !== undefined) {
@@ -12403,7 +12388,7 @@ app.post("/ticket-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 8. FIRESTORE TRANSACTION (Deduct Ticket)
+    // 6. FIRESTORE TRANSACTION (Deduct Ticket)
     // =====================================================
     let newTicketBalance = 0;
 
@@ -12525,7 +12510,7 @@ app.post("/ticket-scan", async (req, res) => {
     });
 
     // =====================================================
-    // 9. PUSH NOTIFICATION TO MERCHANT
+    // 7. PUSH NOTIFICATION TO MERCHANT
     // =====================================================
     const merchantToken = merchantUserData?.fcm;
     if (merchantToken) {
@@ -12548,7 +12533,7 @@ app.post("/ticket-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 10. SUCCESS RESPONSE
+    // 8. SUCCESS RESPONSE
     // =====================================================
     return res.status(200).json({
       success: true,
@@ -14137,7 +14122,7 @@ app.post("/health-scan", async (req, res) => {
     const {
       redeemerPhone,
       merchantPhone,
-      voucherCardNumber,
+      voucherCardNumber, // This is the health card number
       merchantCardNumber,
       amount,
       transactionNo,
@@ -14154,7 +14139,7 @@ app.post("/health-scan", async (req, res) => {
     // =====================================================
     // 1. VALIDATION
     // =====================================================
-    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo||!merchantCardNumber) {
+    if (!redeemerPhone || !merchantPhone || !amount || !transactionNo || !voucherCardNumber || !merchantCardNumber) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -14169,19 +14154,13 @@ app.post("/health-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 2. FIRESTORE REFERENCES
+    // 2. FIRESTORE REFERENCES & QUERIES
     // =====================================================
     const redeemerUserRef = db.collection("users").doc(redeemerPhone);
     const merchantUserRef = db.collection("users").doc(merchantPhone);
-
-    const healthRef = redeemerUserRef.collection("health").doc(voucherCardNumber);
-    const merchantCardRef = merchantUserRef.collection("Cards").doc(merchantCardNumber);
-
     const txnRef = db.collection("AllTransaction").doc(reference);
 
-    // =====================================================
-    // 3. DUPLICATE CHECK
-    // =====================================================
+    // Duplicate check
     const existingTxn = await txnRef.get();
     if (existingTxn.exists) {
       return res.status(400).json({
@@ -14190,29 +14169,35 @@ app.post("/health-scan", async (req, res) => {
       });
     }
 
-    // =====================================================
-    // 4. FETCH REDEEMER, MERCHANT, HEALTH CARD, MERCHANT CARD
-    // =====================================================
-    const [healthSnap, merchantCardSnap, merchantUserSnap] = await Promise.all([
-      healthRef.get(),
-      merchantCardRef.get(),
+    // Use .where() to find the documents by the cardNumber field
+    const [merchantUserSnap, healthQuery, merchantCardQuery] = await Promise.all([
       merchantUserRef.get(),
+      redeemerUserRef.collection("health").where("cardNumber", "==", voucherCardNumber).limit(1).get(),
+      merchantUserRef.collection("Cards").where("cardNumber", "==", merchantCardNumber).limit(1).get()
     ]);
 
-    if (!healthSnap.exists) {
-      return res.status(404).json({ success: false, message: "Health card not found" });
-    }
     if (!merchantUserSnap.exists) {
-      return res.status(404).json({ success: false, message: "Merchant not found" });
+      return res.status(404).json({ success: false, message: "Merchant user not found" });
     }
-    if (!merchantCardSnap.exists) {
-      return res.status(404).json({ success: false, message: "Merchant card not found" });
+    if (healthQuery.empty) {
+      return res.status(404).json({ success: false, message: "Health card not found in database" });
     }
+    if (merchantCardQuery.empty) {
+      return res.status(404).json({ success: false, message: "Merchant card not found in database" });
+    }
+
+    // Extract the actual references and snapshots from the query results
+    const healthRef = healthQuery.docs[0].ref;
+    const healthSnap = healthQuery.docs[0];
+
+    const merchantCardRef = merchantCardQuery.docs[0].ref;
+    const merchantCardSnap = merchantCardQuery.docs[0];
 
     const healthData = healthSnap.data();
     const merchantUserData = merchantUserSnap.data();
     const merchantCardData = merchantCardSnap.data();
 
+    // Check balance
     const healthBalance = Number(healthData.balance || 0);
     if (healthBalance < redeemAmount) {
       return res.status(400).json({
@@ -14223,7 +14208,7 @@ app.post("/health-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 5. RESOLVE MERCHANT XPRESS CUSTOMER ID
+    // 3. RESOLVE MERCHANT XPRESS CUSTOMER ID
     // =====================================================
     const merchantCustomerId =
       merchantCardData?.xpress?.customerId ||
@@ -14239,9 +14224,8 @@ app.post("/health-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 6. CREDIT MERCHANT'S XPRESS WALLET
+    // 4. CREDIT MERCHANT'S XPRESS WALLET
     // =====================================================
-    // Platform's Xpress merchant wallet debits → merchant's Xpress wallet credits
     let xpressResponse;
     try {
       xpressResponse = await axios.post(
@@ -14265,14 +14249,11 @@ app.post("/health-scan", async (req, res) => {
             'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
             'Content-Type': 'application/json',
           },
-          timeout: 20000 // 👈 Added timeout
+          timeout: 20000
         }
       );
     } catch (xpressError) {
-      console.error(
-        "XPRESS CREDIT ERROR:",
-        xpressError.response?.data || xpressError.message
-      );
+      console.error("XPRESS CREDIT ERROR:", xpressError.response?.data || xpressError.message);
 
       // Log failed attempt for audit
       await txnRef.set({
@@ -14280,8 +14261,7 @@ app.post("/health-scan", async (req, res) => {
         provider: "xpress",
         amount: redeemAmount,
         status: "failed",
-        failureReason:
-          xpressError.response?.data?.message || xpressError.message,
+        failureReason: xpressError.response?.data?.message || xpressError.message,
         redeemer: {
           phone: redeemerPhone,
           healthCardNumber: voucherCardNumber,
@@ -14298,9 +14278,7 @@ app.post("/health-scan", async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message:
-          xpressError.response?.data?.message ||
-          "Failed to credit merchant's Xpress wallet",
+        message: xpressError.response?.data?.message || "Failed to credit merchant's Xpress wallet",
         xpress: xpressError.response?.data || null,
       });
     }
@@ -14324,7 +14302,7 @@ app.post("/health-scan", async (req, res) => {
     console.log("✅ Xpress health redemption credit success:", xpressData);
 
     // =====================================================
-    // 7. FETCH FRESH MERCHANT BALANCE (for logging)
+    // 5. FETCH FRESH MERCHANT BALANCE (for logging)
     // =====================================================
     let newMerchantWalletBalance = null;
     try {
@@ -14333,7 +14311,7 @@ app.post("/health-scan", async (req, res) => {
         {
           params: { customerId: merchantCustomerId },
           headers: { 'Authorization': `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
-          timeout: 15000 // 👈 Added timeout
+          timeout: 15000
         }
       );
       if (freshRes.data?.wallet?.availableBalance !== undefined) {
@@ -14344,7 +14322,7 @@ app.post("/health-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 8. FIRESTORE TRANSACTION
+    // 6. FIRESTORE TRANSACTION
     // =====================================================
     let newHealthBalance = 0;
 
@@ -14369,11 +14347,7 @@ app.post("/health-scan", async (req, res) => {
 
       // 2. Notification flags
       tx.set(redeemerUserRef, { notification: true }, { merge: true });
-      tx.set(
-        merchantUserRef,
-        { notification: true, inappnotification: true },
-        { merge: true }
-      );
+      tx.set(merchantUserRef, { notification: true, inappnotification: true }, { merge: true });
 
       // 3. Redeemer transaction log
       tx.set(redeemerUserRef.collection("Transactions").doc(reference), {
@@ -14473,7 +14447,7 @@ app.post("/health-scan", async (req, res) => {
     });
 
     // =====================================================
-    // 9. PUSH NOTIFICATION TO MERCHANT
+    // 7. PUSH NOTIFICATION TO MERCHANT
     // =====================================================
     const merchantToken = merchantUserData?.fcm;
     if (merchantToken) {
@@ -14496,7 +14470,7 @@ app.post("/health-scan", async (req, res) => {
     }
 
     // =====================================================
-    // 10. SUCCESS RESPONSE
+    // 8. SUCCESS RESPONSE
     // =====================================================
     return res.status(200).json({
       success: true,
