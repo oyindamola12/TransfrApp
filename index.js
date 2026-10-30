@@ -11072,7 +11072,7 @@ app.post('/wallet-to-wallet', async (req, res) => {
       senderWallet = walletResponse.data?.wallet;
     } catch (walletError) {
       console.error(
-        'XPRESS WALLET FETCH ERROR:',
+        'XPRESSe WALLET FETCH ERROR:',
         walletError.response?.data || walletError.message,
       );
       return res.status(400).json({
