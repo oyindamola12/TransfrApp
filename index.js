@@ -12338,13 +12338,8 @@ app.post('/transfer-scan', async (req, res) => {
           cardNumber: senderCardNumber,
           cardType: senderCardData.cardType || 'wallet',
           paymentMethod: 'scan',
-          firstname:
-            senderFirstname ||
-            senderData.firstName ||
-            senderData.firstname ||
-            '',
-          lastname:
-            senderLastname || senderData.lastName || senderData.lastname || '',
+          firstname: receiverData.firstName || '',
+          lastname: receiverData.lastname || '',
           senderPhone,
           receiverPhone,
           receiverCardNumber,
