@@ -15075,7 +15075,7 @@ app.post('/voucher-scan', async (req, res) => {
         businessType: businessType || 'voucher',
         transactionNo: reference,
         reference,
-        phonenumber,
+        phonenumber:merchantPhone,
         merchantCustomerId,
         firstname: redeemerFirstname || '',
         lastname: redeemerLastname || '',
