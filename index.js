@@ -16927,16 +16927,15 @@ app.post('/xpress/webhook', async (req, res) => {
       event === 'wallet.balance_updated' ||
       event === 'transfer.received'
     ) {
-      const { customerId } = data;
+      const { customerId, amount, reference, source, destination, metadata } = data;
 
       if (!customerId) {
         return res.status(200).send('OK'); // No customer ID, ignore
       }
 
       // =====================================================
-      // 1. FIND THE CARD USING COLLECTION GROUP QUERY
+      // 1. FIND THE CARD & USER USING COLLECTION GROUP QUERY
       // =====================================================
-      // Since customerId is inside the Cards subcollection, we query the collection group
       const cardsSnapshot = await db
         .collectionGroup('Cards')
         .where('xpress.customerId', '==', customerId)
@@ -16949,16 +16948,15 @@ app.post('/xpress/webhook', async (req, res) => {
       }
 
       const cardDoc = cardsSnapshot.docs[0];
-
-      // Get the parent User document from the Card
       const userRef = cardDoc.ref.parent.parent;
+
       if (!userRef) {
         console.log(`⚠️ Could not find parent user for card`);
         return res.status(200).send('OK');
       }
 
       // =====================================================
-      // 2. USE XPRESS API TO GET FRESH BALANCE (Optional but safe)
+      // 2. USE XPRESS API TO GET FRESH BALANCE
       // =====================================================
       let newBalance = data.newBalance; // Fallback to webhook payload
 
@@ -16978,30 +16976,78 @@ app.post('/xpress/webhook', async (req, res) => {
           newBalance = xpressRes.data.wallet.availableBalance;
         }
       } catch (err) {
-        console.warn(
-          '⚠️ Webhook Xpress API check failed, using payload balance.',
-        );
+        console.warn('⚠️ Webhook Xpress API check failed, using payload balance.');
       }
 
       // =====================================================
-      // 3. UPDATE FIRESTORE
+      // 3. SAVE TO FIRESTORE (BATCH WRITE)
       // =====================================================
       if (newBalance !== undefined) {
-        // Update the specific Card document
-        await cardDoc.ref.update({
+        const batch = db.batch();
+
+        // A. Update the Card document
+        batch.update(cardDoc.ref, {
           'xpress.availableBalance': Number(newBalance),
           'xpress.lastSyncedAt': admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        // Update the root User document for fast access
-        await userRef.update({
+        // B. Update the root User document
+        batch.update(userRef, {
           'xpress.availableBalance': Number(newBalance),
           'xpress.lastSyncedAt': admin.firestore.FieldValue.serverTimestamp(),
         });
+
+        // =====================================================
+        // 4. LOG THE TRANSACTION (NEW)
+        // =====================================================
+        // Only log if we have a reference and an amount
+        if (reference && amount) {
+          const isCredit = event === 'wallet.credited' || event === 'transfer.received';
+          
+          const txnType = isCredit ? 'WalletTransferReceived' : 'WalletTransferSent';
+          const txnStatus = isCredit ? 'receiver' : 'sender';
+          
+          // Use the Xpress reference as the Document ID to prevent duplicate logs
+          const txnRef = userRef.collection('Transactions').doc(reference);
+
+          batch.set(txnRef, {
+            type: txnType,
+            provider: 'xpress',
+            status: txnStatus,
+            amount: Number(amount),
+            balanceAfter: Number(newBalance),
+            balanceType: 'xpress_wallet',
+            cardNumber: cardDoc.id,
+            
+            // If it's a credit, the user is the receiver. If debit, the user is the sender.
+            senderUserId: isCredit ? (source || 'External') : userRef.id,
+            receiverUserId: isCredit ? userRef.id : (destination || 'External'),
+            
+            // Names (Xpress webhooks might pass names in source/destination or metadata)
+            firstname: isCredit ? (source || 'External Sender') : (metadata?.receiverName || ''),
+            lastname: '',
+            
+            transactionNo: reference,
+            xpressReference: reference,
+            transferType: isCredit ? 'xpress_to_xpress' : 'webhook_debit',
+            paymentMethod: 'transfer',
+            date: admin.firestore.FieldValue.serverTimestamp(),
+            
+            // Optional: Save the raw payload for debugging
+            webhookEvent: event,
+            webhookData: data,
+          }, { merge: true }); // 👈 merge: true prevents overwriting if the API already saved it
+        }
+
+        // Commit both the balance updates and the transaction log
+        await batch.commit();
 
         console.log(
           `✅ Real-time update: User ${userRef.id} balance is now ${newBalance}`,
         );
+        if (reference) {
+          console.log(`✅ Transaction ${reference} logged successfully.`);
+        }
       }
     }
 
