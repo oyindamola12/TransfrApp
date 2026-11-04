@@ -11616,35 +11616,36 @@ app.post('/wallet-to-ticket', async (req, res) => {
       // =====================================================
       // 2. Receiver (Ticket Credit) Transaction
       // =====================================================
-      tx.set(userRef.collection('Transactions').doc(`${reference}-ticket`), {
-        type: 'TicketFunded',            // 👈 'TicketFunded' is clearer for the credit side
-        status: 'senderTicket',     // (Or 'ticket' if your UI specifically looks for that)
-        provider: 'xpress',
+
+      // tx.set(userRef.collection('Transactions').doc(`${reference}-ticket`), {
+      //   type: 'TicketFunded',            // 👈 'TicketFunded' is clearer for the credit side
+      //   status: 'senderTicket',     // (Or 'ticket' if your UI specifically looks for that)
+      //   provider: 'xpress',
         
-        // Amounts & Balances
-        amount: fundAmount,
-        balance: newTicketBalance,       // 👈 Added 'balance' for older UI components
-        balanceAfter: newTicketBalance,
-        balanceBefore: latestTicketBalance,
-        balanceType: 'ticket',
+      //   // Amounts & Balances
+      //   amount: fundAmount,
+      //   balance: newTicketBalance,       // 👈 Added 'balance' for older UI components
+      //   balanceAfter: newTicketBalance,
+      //   balanceBefore: latestTicketBalance,
+      //   balanceType: 'ticket',
         
-        // Card & Type Info
-        cardNumber: ticketId,            // 👈 The ticket ID is the "card number" here
-        cardType: 'ticket',
-        paymentMethod: 'wallet',         // 👈 Changed from 'xpress'
-        businessType: 'ticket',
+      //   // Card & Type Info
+      //   cardNumber: ticketId,            // 👈 The ticket ID is the "card number" here
+      //   cardType: 'ticket',
+      //   paymentMethod: 'wallet',         // 👈 Changed from 'xpress'
+      //   businessType: 'ticket',
         
-        // User Info
-        firstname: firstname || userData.firstName || userData.firstname || '',
-        lastname: lastname || userData.lastName || userData.lastname || '',
+      //   // User Info
+      //   firstname: firstname || userData.firstName || userData.firstname || '',
+      //   lastname: lastname || userData.lastName || userData.lastname || '',
         
-        // References
-        transactionNo: reference,
-        reference,
-        walletCardId,                    // Shows which wallet funded the ticket
-        xpressReference,
-        date: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      //   // References
+      //   transactionNo: reference,
+      //   reference,
+      //   walletCardId,                    // Shows which wallet funded the ticket
+      //   xpressReference,
+      //   date: admin.firestore.FieldValue.serverTimestamp(),
+      // });
 
       // Global transaction
       tx.set(txnRef, {
@@ -11697,6 +11698,8 @@ app.post('/wallet-to-ticket', async (req, res) => {
         status: 'success',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      
     });
 
     // =====================================================
