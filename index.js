@@ -6197,38 +6197,31 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
 
 app.post('/xpress-customer-data', async (req, res) => {
   try {
-    // 👈 We no longer need customerId from the frontend. We only need the phone number (userId) and cardId
     const { userId, cardId } = req.body;
 
     if (!userId) {
       return res.status(400).json({ success: false, message: 'Missing userId (phone number)' });
     }
 
-    // Clean the phone number (removes the '+', spaces, or dashes)
     const cleanPhone = userId.replace(/\D/g, ''); 
 
-    // =====================================================
-    // 1. GET CUSTOMER ID FROM XPRESS (Using Phone Number)
-    // =====================================================
+    // 1. GET CUSTOMER ID FROM XPRESS
     let customerId;
     try {
       const customerResponse = await axios.get(
         `${process.env.XPRESS_BASE_URL}/customer/phone`,
         {
           params: { phoneNumber: cleanPhone },
-          headers: {
-            Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-          },
+          headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
           timeout: 15000,
         }
       );
 
-      // Handle different possible response structures from Xpress
       const customerData = customerResponse.data?.customer || customerResponse.data?.data?.customer;
       customerId = customerData?.id;
 
       if (!customerId) {
-        return res.status(404).json({ success: false, message: 'Customer not found on Xpress with this phone number' });
+        return res.status(404).json({ success: false, message: 'Customer not found on Xpress' });
       }
     } catch (error) {
       console.error('Xpress Customer Lookup Error:', error.response?.data || error.message);
@@ -6238,19 +6231,14 @@ app.post('/xpress-customer-data', async (req, res) => {
       });
     }
 
-    // =====================================================
-    // 2. GET WALLET DETAILS FROM XPRESS (Using Customer ID)
-    // =====================================================
+    // 2. GET WALLET DETAILS FROM XPRESS
     let wallet;
     try {
       const walletResponse = await axios.get(
         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
         {
           params: { customerId },
-          headers: {
-            Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
           timeout: 15000,
         }
       );
@@ -6268,9 +6256,7 @@ app.post('/xpress-customer-data', async (req, res) => {
       });
     }
 
-    // =====================================================
     // 3. MAP THE DATA
-    // =====================================================
     const walletData = {
       walletId: wallet.id,
       accountNumber: wallet.accountNumber,
@@ -6282,7 +6268,7 @@ app.post('/xpress-customer-data', async (req, res) => {
       bookedBalance: Number(wallet.bookedBalance || 0),
       currency: wallet.currency || 'NGN',
       status: wallet.status,
-      customerId: customerId, // 👈 Extracted from Step 1
+      customerId: customerId,
       firstName: wallet.firstName,
       lastName: wallet.lastName,
       email: wallet.email,
@@ -6290,53 +6276,41 @@ app.post('/xpress-customer-data', async (req, res) => {
       updatedAt: wallet.updatedAt,
     };
 
-    // =====================================================
     // 4. SEND RESPONSE TO FRONTEND IMMEDIATELY
-    // =====================================================
     res.status(200).json({
       success: true,
       data: { wallet: walletData },
     });
 
-    // =====================================================
-    // 5. SAVE TO FIRESTORE IN THE BACKGROUND
-    // =====================================================
+    // 5. SAVE TO FIRESTORE IN THE BACKGROUND (SAFELY)
     if (userId && cardId) {
-      
-      // A. Update the specific Card document
-      db.collection('users')
-        .doc(userId)
-        .collection('Cards')
-        .doc(cardId)
-        .set({
-          xpress: {
-            ...walletData,
-            lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-        }, { merge: true })
-        .catch(dbErr => console.error('Card update failed:', dbErr));
+      try {
+        // A. Update the specific Card document
+        await db.collection('users')
+          .doc(userId)
+          .collection('Cards')
+          .doc(cardId)
+          .set({ xpress: { ...walletData, lastSyncedAt: admin.firestore.FieldValue.serverTimestamp() } }, { merge: true });
 
-      // B. Update the root User document (using phone number)
-      db.collection('users')
-        .doc(userId) 
-        .set({
-          // Save customer profile info to the root of the document
-          firstName: walletData.firstName || '',
-          lastName: walletData.lastName || '',
-          email: walletData.email || '',
+        // B. Update the global Cards document
+        await db.collection('Cards')
+          .doc(cardId)
+          .set({ xpress: { ...walletData, lastSyncedAt: admin.firestore.FieldValue.serverTimestamp() } }, { merge: true });
+
+        // C. Update the root User document
+        await db.collection('users')
+          .doc(userId) 
+          .set({ xpress: { ...walletData, lastSyncedAt: admin.firestore.FieldValue.serverTimestamp() } }, { merge: true });
           
-          // Save the Xpress specific data
-          xpress: {
-            ...walletData,
-            lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-        }, { merge: true })
-        .catch(dbErr => console.error('User root update failed:', dbErr));
+        console.log("✅ Background sync completed for:", userId);
+      } catch (dbErr) {
+        // This catch prevents the backend from crashing if Firestore throws an error
+        console.error('Background DB update failed:', dbErr);
+      }
     }
     
   } catch (error) {
     console.error('Xpress customer data error:', error.response?.data || error.message);
-    
     return res.status(error.response?.status || 500).json({
       success: false,
       message: error.response?.data?.message || error.message || 'Failed to fetch wallet data',
