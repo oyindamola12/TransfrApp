@@ -6221,7 +6221,7 @@ app.post('/xpress-customer-data', async (req, res) => {
     );
 
     const wallet = response.data?.wallet;
-
+   const newBalance = Number(wallet.availableBalance || 0);
     if (!wallet) {
       return res
         .status(404)
@@ -6262,6 +6262,20 @@ app.post('/xpress-customer-data', async (req, res) => {
         .collection('Cards')
         .doc(cardId)
         .update({
+          balance:newBalance,
+          xpress: {
+            ...walletData,
+            lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        })
+        .catch(dbErr => console.error('Card update failed:', dbErr));
+
+
+
+        db.collection('Cards')
+        .doc(cardId)
+        .update({
+          balance:newBalance,
           xpress: {
             ...walletData,
             lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -6275,6 +6289,7 @@ app.post('/xpress-customer-data', async (req, res) => {
         .collection('Cards')
         .doc(cardId)
         .update({
+           balance:newBalance,
           xpress: {
             ...walletData,
             lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
