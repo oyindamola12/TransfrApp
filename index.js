@@ -6197,36 +6197,80 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
 
 app.post('/xpress-customer-data', async (req, res) => {
   try {
-    const { customerId, userId, cardId } = req.body;
+    // 👈 We no longer need customerId from the frontend. We only need the phone number (userId) and cardId
+    const { userId, cardId } = req.body;
 
-    if (!customerId) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Missing customerId' });
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'Missing userId (phone number)' });
     }
 
-    // 1. Call Xpress
-    const response = await axios.get(
-      `${process.env.XPRESS_BASE_URL}/wallet/customer`,
-      {
-        params: { customerId },
-        headers: {
-          Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 15000,
-      },
-    );
+    // Clean the phone number (removes the '+', spaces, or dashes)
+    const cleanPhone = userId.replace(/\D/g, ''); 
 
-    const wallet = response.data?.wallet;
+    // =====================================================
+    // 1. GET CUSTOMER ID FROM XPRESS (Using Phone Number)
+    // =====================================================
+    let customerId;
+    try {
+      const customerResponse = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/customer/phone`,
+        {
+          params: { phoneNumber: cleanPhone },
+          headers: {
+            Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+          },
+          timeout: 15000,
+        }
+      );
 
-    if (!wallet) {
-      return res
-        .status(404)
-        .json({ success: false, message: 'Wallet not found on Xpress' });
+      // Handle different possible response structures from Xpress
+      const customerData = customerResponse.data?.customer || customerResponse.data?.data?.customer;
+      customerId = customerData?.id;
+
+      if (!customerId) {
+        return res.status(404).json({ success: false, message: 'Customer not found on Xpress with this phone number' });
+      }
+    } catch (error) {
+      console.error('Xpress Customer Lookup Error:', error.response?.data || error.message);
+      return res.status(400).json({
+        success: false,
+        message: error.response?.data?.message || 'Failed to find customer on Xpress',
+      });
     }
 
-    // 2. Map the data correctly
+    // =====================================================
+    // 2. GET WALLET DETAILS FROM XPRESS (Using Customer ID)
+    // =====================================================
+    let wallet;
+    try {
+      const walletResponse = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+        {
+          params: { customerId },
+          headers: {
+            Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000,
+        }
+      );
+
+      wallet = walletResponse.data?.wallet || walletResponse.data?.data?.wallet;
+
+      if (!wallet) {
+        return res.status(404).json({ success: false, message: 'Wallet not found on Xpress' });
+      }
+    } catch (error) {
+      console.error('Xpress Wallet Fetch Error:', error.response?.data || error.message);
+      return res.status(400).json({
+        success: false,
+        message: error.response?.data?.message || 'Failed to fetch wallet from Xpress',
+      });
+    }
+
+    // =====================================================
+    // 3. MAP THE DATA
+    // =====================================================
     const walletData = {
       walletId: wallet.id,
       accountNumber: wallet.accountNumber,
@@ -6238,7 +6282,7 @@ app.post('/xpress-customer-data', async (req, res) => {
       bookedBalance: Number(wallet.bookedBalance || 0),
       currency: wallet.currency || 'NGN',
       status: wallet.status,
-      customerId: wallet.customerId,
+      customerId: customerId, // 👈 Extracted from Step 1
       firstName: wallet.firstName,
       lastName: wallet.lastName,
       email: wallet.email,
@@ -6246,81 +6290,186 @@ app.post('/xpress-customer-data', async (req, res) => {
       updatedAt: wallet.updatedAt,
     };
 
-    // 3. Send response to frontend IMMEDIATELY
+    // =====================================================
+    // 4. SEND RESPONSE TO FRONTEND IMMEDIATELY
+    // =====================================================
     res.status(200).json({
       success: true,
       data: { wallet: walletData },
     });
 
-    // 4. Save to Firestore in the background using .update()
+    // =====================================================
+    // 5. SAVE TO FIRESTORE IN THE BACKGROUND
+    // =====================================================
     if (userId && cardId) {
-      // Update the specific Card document
+      
+      // A. Update the specific Card document
       db.collection('users')
         .doc(userId)
         .collection('Cards')
         .doc(cardId)
-        .update({
+        .set({
           xpress: {
             ...walletData,
             lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-        })
+        }, { merge: true })
         .catch(dbErr => console.error('Card update failed:', dbErr));
 
-      // Optional: If you also want to update the root user document
+      // B. Update the root User document (using phone number)
       db.collection('users')
-        .doc(userId)
-        .collection('Cards')
-        .doc(cardId)
-        .update({
+        .doc(userId) 
+        .set({
+          // Save customer profile info to the root of the document
+          firstName: walletData.firstName || '',
+          lastName: walletData.lastName || '',
+          email: walletData.email || '',
+          
+          // Save the Xpress specific data
           xpress: {
             ...walletData,
             lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
-        })
+        }, { merge: true })
         .catch(dbErr => console.error('User root update failed:', dbErr));
     }
+    
   } catch (error) {
-    console.error(
-      'Xpress wallet data error:',
-      error.response?.data || error.message,
-    );
-
-    // Fallback: If Xpress is down, read from Firestore
-    const { userId, cardId, customerId } = req.body;
-
-    if (userId && cardId) {
-      try {
-        const cardDoc = await db
-          .collection('users')
-          .doc(userId)
-          .collection('Cards')
-          .doc(cardId)
-          .get();
-
-        const cachedData = cardDoc.data()?.xpress;
-
-        if (cachedData) {
-          return res.status(200).json({
-            success: true,
-            isCached: true,
-            data: { wallet: cachedData },
-          });
-        }
-      } catch (fallbackErr) {
-        console.error('Fallback DB read failed:', fallbackErr);
-      }
-    }
-
+    console.error('Xpress customer data error:', error.response?.data || error.message);
+    
     return res.status(error.response?.status || 500).json({
       success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to fetch wallet data',
+      message: error.response?.data?.message || error.message || 'Failed to fetch wallet data',
     });
   }
 });
+
+// app.post('/xpress-customer-data', async (req, res) => {
+//   try {
+//     const { customerId, userId, cardId } = req.body;
+
+//     if (!customerId) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: 'Missing customerId' });
+//     }
+
+//     // 1. Call Xpress
+//     const response = await axios.get(
+//       `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//       {
+//         params: { customerId },
+//         headers: {
+//           Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//           'Content-Type': 'application/json',
+//         },
+//         timeout: 15000,
+//       },
+//     );
+
+//     const wallet = response.data?.wallet;
+
+//     if (!wallet) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: 'Wallet not found on Xpress' });
+//     }
+
+//     // 2. Map the data correctly
+//     const walletData = {
+//       walletId: wallet.id,
+//       accountNumber: wallet.accountNumber,
+//       accountName: wallet.accountName,
+//       bankName: wallet.bankName,
+//       bankCode: wallet.bankCode,
+//       accountReference: wallet.accountReference,
+//       availableBalance: Number(wallet.availableBalance || 0),
+//       bookedBalance: Number(wallet.bookedBalance || 0),
+//       currency: wallet.currency || 'NGN',
+//       status: wallet.status,
+//       customerId: wallet.customerId,
+//       firstName: wallet.firstName,
+//       lastName: wallet.lastName,
+//       email: wallet.email,
+//       createdAt: wallet.createdAt,
+//       updatedAt: wallet.updatedAt,
+//     };
+
+//     // 3. Send response to frontend IMMEDIATELY
+//     res.status(200).json({
+//       success: true,
+//       data: { wallet: walletData },
+//     });
+
+//     // 4. Save to Firestore in the background using .update()
+//     if (userId && cardId) {
+//       // Update the specific Card document
+//       db.collection('users')
+//         .doc(userId)
+//         .collection('Cards')
+//         .doc(cardId)
+//         .update({
+//           xpress: {
+//             ...walletData,
+//             lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+//           },
+//         })
+//         .catch(dbErr => console.error('Card update failed:', dbErr));
+
+//       // Optional: If you also want to update the root user document
+//       db.collection('users')
+//         .doc(userId)
+//         .collection('Cards')
+//         .doc(cardId)
+//         .update({
+//           xpress: {
+//             ...walletData,
+//             lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+//           },
+//         })
+//         .catch(dbErr => console.error('User root update failed:', dbErr));
+//     }
+//   } catch (error) {
+//     console.error(
+//       'Xpress wallet data error:',
+//       error.response?.data || error.message,
+//     );
+
+//     // Fallback: If Xpress is down, read from Firestore
+//     const { userId, cardId, customerId } = req.body;
+
+//     if (userId && cardId) {
+//       try {
+//         const cardDoc = await db
+//           .collection('users')
+//           .doc(userId)
+//           .collection('Cards')
+//           .doc(cardId)
+//           .get();
+
+//         const cachedData = cardDoc.data()?.xpress;
+
+//         if (cachedData) {
+//           return res.status(200).json({
+//             success: true,
+//             isCached: true,
+//             data: { wallet: cachedData },
+//           });
+//         }
+//       } catch (fallbackErr) {
+//         console.error('Fallback DB read failed:', fallbackErr);
+//       }
+//     }
+
+//     return res.status(error.response?.status || 500).json({
+//       success: false,
+//       message:
+//         error.response?.data?.message ||
+//         error.message ||
+//         'Failed to fetch wallet data',
+//     });
+//   }
+// });
 
 app.post('/xpress-customer-data2', async (req, res) => {
   try {
@@ -6390,6 +6539,7 @@ app.post('/xpress-customer-data2', async (req, res) => {
       .json({ success: false, message: 'Failed to fetch wallet data' });
   }
 });
+
 app.post('/flutterwave-webhook', async (req, res) => {
   try {
     const event = req.body;
