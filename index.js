@@ -6211,7 +6211,7 @@ app.post('/xpress-customer-data', async (req, res) => {
       const customerResponse = await axios.get(
         `${process.env.XPRESS_BASE_URL}/customer/phone`,
         {
-          params: { phoneNumber: cleanPhone },
+          params: { phoneNumber: '2349153525725'|| '09153525725'||'+2349153525725'},
           headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
           timeout: 15000,
         }
