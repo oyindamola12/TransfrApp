@@ -6311,6 +6311,11 @@ app.post('/xpress-customer-data', async (req, res) => {
     
   } catch (error) {
     console.error('Xpress customer data error:', error.response?.data || error.message);
+      console.error('--- FULL XPRESS CUSTOMER LOOKUP ERROR ---');
+  console.error('Status:', error.response?.status);
+  console.error('Data:', JSON.stringify(error.response?.data, null, 2));
+  console.error('Message:', error.message);
+  console.error('----------------------------------------');
     return res.status(error.response?.status || 500).json({
       success: false,
       message: error.response?.data?.message || error.message || 'Failed to fetch wallet data',
