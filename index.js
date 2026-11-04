@@ -6203,7 +6203,7 @@ app.post('/xpress-customer-data', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing userId (phone number)' });
     }
 
-    const cleanPhone = userId.replace(/\D/g, ''); 
+    const cleanPhone = ['2349153525725', '09153525725', '+2349153525725']; 
 
     // 1. GET CUSTOMER ID FROM XPRESS
     let customerId;
