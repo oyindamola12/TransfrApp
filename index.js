@@ -11,6 +11,7 @@ require('dotenv').config();
 const app = express();
 // const webhookRoutes = require('./routes/xpress/webhook');
 // app.use(webhookRoutes);
+
 const Flutterwave = require('flutterwave-node-v3');
 // const { type } = require("os");
 
@@ -1783,6 +1784,7 @@ app.post('/bank-withdrawal', async (req, res) => {
     batch.set(userRef.collection('Transactions').doc(reference), {
       type: 'Withdrawal',
       status: 'TransferToBank',
+      paymentMethod:'Bank transfer',
       paymentstatus: 'success',
       provider: 'xpress',
       category: 'CUSTOMER_BANK_TRANSFER',
@@ -1797,7 +1799,8 @@ app.post('/bank-withdrawal', async (req, res) => {
       accountNumber,
       firstname:accountName,
       narration: narration || 'Bank withdrawal',
-      reference,
+      transactionNo: reference,
+
       date: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -11594,7 +11597,6 @@ app.post('/wallet-to-ticket', async (req, res) => {
         balance: newWalletBalance,       // 👈 Added 'balance' for older UI components
         balanceAfter: newWalletBalance,
         balanceType: 'xpress_wallet',
-        
         // Card & Type Info
         cardNumber: walletCardId,
         cardType: 'wallet',
@@ -11699,7 +11701,7 @@ app.post('/wallet-to-ticket', async (req, res) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      
+
     });
 
     // =====================================================
@@ -17076,6 +17078,108 @@ app.post('/xpress/webhook', async (req, res) => {
   } catch (error) {
     console.error('Webhook error:', error);
     return res.status(200).send('OK');
+  }
+});
+
+
+app.post('/sync-xpress-transactions', async (req, res) => {
+  try {
+    const { userId, customerId } = req.body;
+
+    if (!userId || !customerId) {
+      return res.status(400).json({ success: false, message: 'Missing userId or customerId' });
+    }
+
+    let allTransactions = [];
+    let page = 1;
+    let hasMore = true;
+
+    // 1. Loop through pages to get ALL transactions (up to 5 pages for safety)
+    while (hasMore && page <= 5) {
+      const response = await axios.get(
+        `${process.env.XPRESS_BASE_URL}/transaction/customer`,
+        {
+          params: { customerId: customerId, page: page, perPage: 50 },
+          headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+          timeout: 15000,
+        }
+      );
+
+      const txs = response.data?.transactions || [];
+      if (txs.length === 0) {
+        hasMore = false;
+      } else {
+        allTransactions = [...allTransactions, ...txs];
+        page++;
+      }
+    }
+
+    if (allTransactions.length === 0) {
+      return res.status(200).json({ success: true, message: 'No transactions found' });
+    }
+
+    // 2. 👈 FILTER: ONLY NIP_CREDIT (Inbound External Bank Transfers)
+    const filteredTransactions = allTransactions.filter(
+      txn => txn.category === 'NIP_CREDIT'
+    );
+
+    if (filteredTransactions.length === 0) {
+      return res.status(200).json({ success: true, message: 'No inbound bank transfers found' });
+    }
+
+    // 3. Save to Firestore
+    const userRef = db.collection('users').doc(userId);
+    const batch = db.batch();
+    let newTransactionsCount = 0;
+
+    for (const txn of filteredTransactions) {
+      const txnRef = userRef.collection('Transactions').doc(txn.reference);
+      const docSnap = await txnRef.get();
+      
+      if (!docSnap.exists) {
+        newTransactionsCount++;
+      }
+
+      // Extract the sender's details from the metadata object
+      const senderName = txn.metadata?.originatorAccountName || 'External Bank';
+      const senderAccountNumber = txn.metadata?.originatorAccountNumber || '';
+      
+      // Xpress doesn't provide the sender's bank name, only their bank verification number (BVN)
+      const senderBankName = 'External Bank';
+
+      batch.set(txnRef, {
+        type: 'BankTransferReceived', 
+        provider: 'xpress',
+        category: txn.category, // NIP_CREDIT
+        status:'BankFund',
+        amount: Number(txn.amount),
+        currency: txn.currency || 'NGN',
+        balanceBefore: txn.balance_before ? Number(txn.balance_before) : null,
+        balanceAfter: txn.balance_after ? Number(txn.balance_after) : null,
+        description: txn.description || '',
+        firstname: senderName, 
+        senderAccountNumber: senderAccountNumber,
+        bankName: senderBankName,
+        transactionNo: txn.reference,
+        reference: txn.reference,
+        xpressReference: txn.reference,
+        paymentMethod: 'bank',
+        date: txn.createdAt ? new Date(txn.createdAt) : admin.firestore.FieldValue.serverTimestamp(),
+        xpressRawData: txn,
+        cardType:'wallet'
+      }, { merge: true });
+    }
+
+    await batch.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: `Synced ${newTransactionsCount} new inbound bank transfers`,
+    });
+
+  } catch (error) {
+    console.error('Xpress Transaction Sync Error:', error.response?.data || error.message);
+    return res.status(500).json({ success: false, message: 'Failed to sync transactions' });
   }
 });
 
