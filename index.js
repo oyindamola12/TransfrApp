@@ -6293,7 +6293,30 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
   }
 });
 
+app.post('/api/notifications/mark-read', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token' });
+    }
+    const idToken = authHeader.split(' ')[1];
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const phoneNumber = decodedToken.phone_number;
 
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: 'No phone in token' });
+    }
+
+    await db.collection('users').doc(phoneNumber).update({
+      notification: false
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Mark read error:', err);
+    return res.status(500).json({ success: false, message: 'Failed' });
+  }
+});
 
 app.post('/xpress-customer-data', async (req, res) => {
   try {
