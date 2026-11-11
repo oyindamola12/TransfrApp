@@ -7,6 +7,9 @@ const admin = require('firebase-admin');
 const cors = require('cors');
 const crypto = require('crypto');
 const CryptoJS = require('crypto-js');
+const bcrypt = require('bcrypt');
+
+
 require('dotenv').config();
 const app = express();
 // const webhookRoutes = require('./routes/xpress/webhook');
@@ -116,13 +119,6 @@ const BUSINESS_TYPE_MAP = {
 const RECIPIENTS_PER_BATCH = 80;
 // const FLW_SECRET_KEY = "FLWSECK_TEST-41f568066a3e9d9bfaaedeca9f8e5572-X";
 
-app.get('/', (req, res) => {
-  res.send('Backend is running!');
-});
-
-app.get('/ping', (req, res) => {
-  res.json({ success: true, message: 'Backend is connected!' });
-});
 
 // app.post("/fund-wallet", async (req, res) => {
 //   try {
@@ -379,8 +375,7 @@ app.post('/fund-ticket', async (req, res) => {
           reference,
           customerId: xpressCustomerId,
           metadata: {
-            firebaseUserId: userId,
-            cardId,
+          
             purpose: 'ticket_funding',
             source: 'transfr_app',
           },
@@ -1901,6 +1896,106 @@ app.post('/bank-withdrawal', async (req, res) => {
   }
 });
 
+app.post('/api/register', async (req, res) => {
+  try {
+    // 1. Get the Firebase Token from the header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    const idToken = authHeader.split(' ')[1];
+
+    // 2. Verify the token with Firebase (Proves they own the phone number)
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const verifiedPhoneNumber = decodedToken.phone_number; // e.g., +2349153525725
+
+    if (!verifiedPhoneNumber) {
+      return res.status(400).json({ success: false, message: 'No phone number in token' });
+    }
+
+    const { firstname, lastname, passcode, accountType, fcmToken, cardNo, ticketNo } = req.body;
+
+    // 3. Hash the passcode securely
+    const hashedPasscode = await bcrypt.hash(passcode, 10);
+
+    // 4. Save to Firestore via Backend
+    const userRef = db.collection('users').doc(verifiedPhoneNumber);
+    const timeStampDate = admin.firestore.FieldValue.serverTimestamp();
+
+    const batch = db.batch();
+
+    // Save User Profile
+    batch.set(userRef, {
+      lastname,
+      firstname,
+      phonenumber: verifiedPhoneNumber,
+      loginPasscode: hashedPasscode, // 👈 Hashed, not plain text!
+      email: '',
+      createdAt: timeStampDate,
+      status: 'Already signed up',
+      termsAndConditions: 'Accepted',
+      fcm: fcmToken,
+      notification: false,
+      inappnotification: false,
+      receivedGiveaway: false,
+      accountType: accountType,
+      tier: 0,
+      nuban: false
+    });
+
+    // Save Wallet Card
+    const cardRef = userRef.collection('Cards').doc(cardNo);
+    batch.set(cardRef, {
+      cardNumber: cardNo,
+      balance: 0,
+      num: 1,
+      createdAt: timeStampDate,
+      firstname,
+      lastname,
+      phonenumber: verifiedPhoneNumber,
+      fcm: fcmToken,
+      cardType: 'wallet',
+      xpressWallet: { accountType: 'norminal' }
+    });
+
+    // Save Global Card
+    const globalCardRef = db.collection('Cards').doc(cardNo);
+    batch.set(globalCardRef, {
+      cardNumber: cardNo,
+      balance: 0,
+      createdAt: timeStampDate,
+      firstname,
+      lastname,
+      phonenumber: verifiedPhoneNumber,
+      num: 1,
+      fcm: fcmToken,
+      cardType: 'wallet'
+    });
+
+    // Save Ticket
+    const ticketRef = userRef.collection('tickets').doc(ticketNo);
+    batch.set(ticketRef, {
+      cardNumber: ticketNo,
+      balance: 0,
+      num: 'ticket',
+      createdAt: timeStampDate,
+      firstname,
+      lastname,
+      phonenumber: verifiedPhoneNumber,
+      fcm: fcmToken,
+      cardType: 'ticket',
+      businessType: 'ticket'
+    });
+
+    await batch.commit();
+
+    return res.status(201).json({ success: true, message: 'User registered successfully' });
+
+  } catch (error) {
+    console.error('Registration Error:', error);
+    return res.status(500).json({ success: false, message: 'Registration failed' });
+  }
+});
 // --- Register Merchant Endpoint (app.post) ---
 app.post('/register-merchant', async (req, res) => {
   try {
@@ -4860,7 +4955,7 @@ const migrateTransfrCredit = async (
         reference,
         customerId,
         metadata: {
-          firebaseUserId: userId,
+         
           source: 'transfr_credit',
           tier: 'upgrade',
         },
@@ -5281,7 +5376,7 @@ app.post('/create-xpress-wallet', async (req, res) => {
           phoneNumber: cleanPhone,
           email,
           address,
-          metadata: { firebaseUserId: userId },
+        
         },
         {
           headers: {
@@ -5620,7 +5715,7 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
           email,
           address,
           metadata: {
-            firebaseUserId: userId,
+        
             passportPhoto: passportUrl,
             upgradeFrom: currentTier,
             upgradeTo: 'TIER_2',
@@ -5990,7 +6085,7 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
           email,
           address,
           metadata: {
-            firebaseUserId: userId,
+        
             passportPhoto: passportUrl,
             utilityBill: utilityBillUrl,
             upgradeFrom: currentTier,
@@ -11459,7 +11554,7 @@ app.post('/wallet-to-ticket', async (req, res) => {
           narration: `Ticket funding for user ${userId}`,
           customerId: xpressCustomerId,
           metadata: {
-            firebaseUserId: userId,
+       
             walletCardId,
             ticketId,
             purpose: 'ticket_funding',
@@ -12557,7 +12652,7 @@ app.post('/transfer-scan', async (req, res) => {
             narration: `Scan transfer for user ${receiverPhone}`,
             customerId: senderCustomerId,
             metadata: {
-              firebaseUserId: senderPhone,
+       
               receiverPhone,
               reference,
               purpose: 'internal_wallet_transfer_scan',
@@ -13366,10 +13461,9 @@ app.post('/ticket-scan', async (req, res) => {
           reference,
           customerId: merchantCustomerId,
           metadata: {
-            firebaseUserId: merchantPhone,
-            redeemerPhone,
-            ticketCardNumber,
-            merchantCardNumber,
+      
+    
+            
             businessType: businessType || 'ticket',
             purpose: 'ticket_redemption',
             source: 'transfr_app',
@@ -14959,10 +15053,7 @@ app.post('/voucher-scan', async (req, res) => {
           reference,
           customerId: merchantCustomerId,
           metadata: {
-            firebaseUserId: merchantPhone,
-            redeemerPhone,
-            voucherCardNumber,
-            merchantCardNumber,
+           
             businessType: businessType || 'voucher',
             purpose: 'voucher_redemption',
             source: 'transfr_app',
@@ -15380,10 +15471,7 @@ app.post('/health-scan', async (req, res) => {
           reference,
           customerId: merchantCustomerId,
           metadata: {
-            firebaseUserId: merchantPhone,
-            redeemerPhone,
-            voucherCardNumber,
-            merchantCardNumber,
+            
             businessType: businessType || 'health',
             purpose: 'health_redemption',
             source: 'transfr_app',
@@ -16620,8 +16708,7 @@ app.post('/save-giver', async (req, res) => {
           narration:`Giveaway funding: ${typesOfgiveawayText2}`,
           customerId: giverCustomerId,
           metadata: {
-            firebaseUserId: phonenumber,
-            cardId: selectCardCares,
+           
             purpose: 'giveaway_funding',
             giveawayType: typesOfgiveawayText2,
             hashtag: `#transfrcares_${hashTag}`,
@@ -17129,11 +17216,14 @@ app.post('/sync-xpress-transactions', async (req, res) => {
 
     // 3. Save to Firestore
     const userRef = db.collection('users').doc(userId);
+
     const batch = db.batch();
     let newTransactionsCount = 0;
 
     for (const txn of filteredTransactions) {
       const txnRef = userRef.collection('Transactions').doc(txn.reference);
+        const txnRef2 = db.collection('AllTransaction').doc(txn.reference);
+
       const docSnap = await txnRef.get();
       
       if (!docSnap.exists) {
@@ -17148,6 +17238,29 @@ app.post('/sync-xpress-transactions', async (req, res) => {
       const senderBankName = 'External Bank';
 
       batch.set(txnRef, {
+        type: 'BankTransferReceived', 
+        provider: 'xpress',
+        category: txn.category, // NIP_CREDIT
+        status:'BankFund',
+        amount: Number(txn.amount),
+        currency: txn.currency || 'NGN',
+        balanceBefore: txn.balance_before ? Number(txn.balance_before) : null,
+        balanceAfter: txn.balance_after ? Number(txn.balance_after) : null,
+        description: txn.description || '',
+        firstname: senderName, 
+        senderAccountNumber: senderAccountNumber,
+        bankName: senderBankName,
+        transactionNo: txn.reference,
+        reference: txn.reference,
+        xpressReference: txn.reference,
+        paymentMethod: 'bank',
+        date: txn.createdAt ? new Date(txn.createdAt) : admin.firestore.FieldValue.serverTimestamp(),
+        xpressRawData: txn,
+        cardType:'wallet'
+      }, { merge: true });
+
+
+       batch.set(txnRef2, {
         type: 'BankTransferReceived', 
         provider: 'xpress',
         category: txn.category, // NIP_CREDIT
