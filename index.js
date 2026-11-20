@@ -188,6 +188,10 @@ const loginAttempts = new Map(); // phone -> { count, windowStart, lockedUntil }
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;   // 15 min
 const LOCK_MS   = 15 * 60 * 1000;
+const resetAttempts = new Map(); // phone -> { count, windowStart }
+const DUMMY_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+const RESET_MAX = 3;
+const RESET_WINDOW = 60 * 60 * 1000; // 1 hour
 app.get('/xpress/banks', async (req, res) => {
   try {
     const now = Date.now();
@@ -1949,7 +1953,15 @@ function clearAttempts(phone) {
 }
 
 // Dummy hash for timing-safe compare when user doesn't exist
-const DUMMY_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
+
+// ─────────────────────────────────────────────────────
+// Reuse from the verify-login-passcode file:
+// - loginAttempts Map
+// - checkRateLimit / recordFailure / clearAttempts
+// - bcrypt, admin, db
+// ─────────────────────────────────────────────────────
+
 
 app.post('/api/auth/verify-login-passcode', async (req, res) => {
   try {
@@ -2036,6 +2048,204 @@ app.post('/api/auth/verify-login-passcode', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────
+// STEP 1 — Initiate: check if user exists
+// ─────────────────────────────────────────────────────
+app.post('/api/auth/reset-passcode/initiate', async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || typeof phone !== 'string' || !/^\+[1-9]\d{6,14}$/.test(phone)) {
+      return res.status(400).json({ success: false, message: 'Invalid phone' });
+    }
+
+    // Rate limit (per phone) — prevents SMS spam
+    const now = Date.now();
+    const rec = resetAttempts.get(phone);
+    if (rec) {
+      if (now - rec.windowStart > RESET_WINDOW_MS) {
+        resetAttempts.delete(phone);
+      } else if (rec.count >= RESET_MAX) {
+        return res.status(429).json({
+          success: false,
+          code: 'RATE_LIMITED',
+          message: 'Too many reset requests. Try again in an hour.',
+        });
+      }
+    }
+    const current = resetAttempts.get(phone) || { count: 0, windowStart: now };
+    current.count += 1;
+    resetAttempts.set(phone, current);
+
+    // Check user exists
+    const userSnap = await db.collection('users').doc(phone).get();
+
+    // Note: this leaks enumeration (same trade-off as login).
+    // If you want to hide it, always return exists:true and let
+    // Firebase signInWithPhoneNumber fail silently for non-users.
+    return res.json({
+      success: true,
+      exists: userSnap.exists,
+    });
+
+  } catch (e) {
+    console.error('reset-initiate error:', e);
+    return res.status(500).json({ success: false, message: 'Failed to check account' });
+  }
+});
+
+// ─────────────────────────────────────────────────────
+// STEP 2 — Complete: set new passcode
+// Requires: Firebase ID token (proves OTP passed)
+// ─────────────────────────────────────────────────────
+app.post('/api/auth/reset-passcode/complete', async (req, res) => {
+  try {
+    // ── Verify Firebase token ──
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+    } catch {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+    const phone = decoded.phone_number;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'No phone in token' });
+    }
+
+    // ── Validate new passcode ──
+    const { newPasscode, newPasscode2 } = req.body;
+
+    if (!newPasscode || typeof newPasscode !== 'string' || !/^\d{6}$/.test(newPasscode)) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_PASSCODE',
+        message: 'Passcode must be exactly 6 digits',
+      });
+    }
+    if (newPasscode !== newPasscode2) {
+      return res.status(400).json({
+        success: false,
+        code: 'MISMATCH',
+        message: 'Passcodes do not match',
+      });
+    }
+
+    // Weak-passcode block (optional but recommended)
+    const weak = ['000000', '111111', '222222', '333333', '444444',
+                  '555555', '666666', '777777', '888888', '999999',
+                  '123456', '654321'];
+    if (weak.includes(newPasscode)) {
+      return res.status(400).json({
+        success: false,
+        code: 'WEAK_PASSCODE',
+        message: 'This passcode is too easy to guess. Choose a different one.',
+      });
+    }
+
+    // ── Verify user exists ──
+    const userRef = db.collection('users').doc(phone);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // ── Hash and save ──
+    const hashed = await bcrypt.hash(newPasscode, 10);
+
+    const batch = db.batch();
+
+    batch.update(userRef, {
+      passcode: hashed,
+      passcodeResetAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Audit log
+    const logRef = userRef.collection('securityLog').doc();
+    batch.set(logRef, {
+      type: 'PasscodeReset',
+      phone,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] || '',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    // Clear any lockout caused by the forgotten passcode
+    clearAttempts(phone);
+    resetAttempts.delete(phone);
+
+    return res.json({
+      success: true,
+      message: 'Passcode reset successfully',
+    });
+
+  } catch (e) {
+    console.error('reset-complete error:', e);
+    return res.status(500).json({ success: false, message: 'Failed to reset passcode' });
+  }
+});
+
+app.post('/api/auth/reset-passcode/complete', async (req, res) => {
+  try {
+    // Verify Firebase token
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token' });
+    }
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+    } catch {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+    const phone = decoded.phone_number;
+    if (!phone) return res.status(400).json({ success: false, message: 'No phone in token' });
+    
+    // Validate new passcode
+    const { newPasscode, newPasscode2 } = req.body;
+    if (!newPasscode || typeof newPasscode !== 'string' || !/^\d{6}$/.test(newPasscode)) {
+      return res.status(400).json({ success: false, code: 'INVALID_PASSCODE', message: 'Passcode must be 6 digits' });
+    }
+    if (newPasscode !== newPasscode2) {
+      return res.status(400).json({ success: false, code: 'MISMATCH', message: 'Passcodes do not match' });
+    }
+    
+    // Get user
+    const userRef = db.collection('users').doc(phone);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // Hash and save
+    const hashed = await bcrypt.hash(newPasscode, 10);
+    await userRef.update({
+      passcode: hashed,
+      passcodeResetAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    // Log reset (for audit)
+    await userRef.collection('securityLog').add({
+      type: 'PasscodeReset',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    
+    // Invalidate login attempts for this phone (they may have been from a forgotten passcode)
+    loginAttempts.delete(phone);
+    
+    return res.json({ success: true, message: 'Passcode reset successfully' });
+  } catch (e) {
+    console.error('reset-complete error:', e);
+    return res.status(500).json({ success: false, message: 'Failed to reset passcode' });
+  }
+});
 app.post('/bank-withdrawal', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH: derive userId from verified token
@@ -2129,7 +2339,7 @@ app.post('/bank-withdrawal', async (req, res) => {
     const cardData = cardDoc.data();
 
     // ── PIN verification: bcrypt if hashed, plaintext fallback + migrate ──
-    const storedPasscode = userData.transferPasscode || userData.loginPasscode;
+    const storedPasscode = userData.transferPasscode || userData.passcode;
     if (!storedPasscode) {
       return res.status(400).json({ success: false, message: 'No PIN set on account' });
     }
@@ -2360,7 +2570,7 @@ app.post('/bank-withdrawal', async (req, res) => {
       xpressReference,
       bankCode,
       accountNumber,
-      beneficiaryName: accountName,      // 👈 was 'firstname: accountName'
+      firstname: accountName,      // 👈 was 'firstname: accountName'
       narration: narration || 'Bank withdrawal',
       transactionNo: reference,
       date: admin.firestore.FieldValue.serverTimestamp(),
@@ -2491,7 +2701,7 @@ app.post('/api/register', async (req, res) => {
       lastname,
       firstname,
       phonenumber: verifiedPhoneNumber,
-      loginPasscode: hashedPasscode, // 👈 Hashed, not plain text!
+      passcode: hashedPasscode, // 👈 Hashed, not plain text!
       email: '',
       createdAt: timeStampDate,
       status: 'Already signed up',
@@ -3023,7 +3233,7 @@ app.post('/api/auth/verify-transfer-pin', async (req, res) => {
     const userSnap = await userRef.get();
     if (!userSnap.exists) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const stored = userSnap.data().transferPasscode || userSnap.data().loginPasscode;
+    const stored = userSnap.data().transferPasscode || userSnap.data().passcode;
     if (!stored) {
       return res.status(400).json({ success: false, code: 'PIN_NOT_SET', message: 'PIN not set' });
     }
@@ -9010,7 +9220,7 @@ app.post('/api/beneficiaries/bank', async (req, res) => {
       .collection('savedBankBeneficiaries').doc(id);
 
     try {
-      await ref.create({
+      await ref.set({
         bankName: bankName.trim(),
         accountName: accountName.trim(),
         accountNumber,
