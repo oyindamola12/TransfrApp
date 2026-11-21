@@ -15643,18 +15643,37 @@ app.post('/xpress-customer-data', async (req, res) => {
 // });
 
 
+const bcrypt = require('bcryptjs'); // Make sure this is at the top of your file
+
 app.post('/wallet-to-wallet', async (req, res) => {
+  // =====================================================
+  // 🔒 0. AUTHENTICATION (Derive Sender ID from Token)
+  // =====================================================
+  let userId;
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    const decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+    userId = decoded.phone_number;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'No phone in token' });
+    }
+  } catch (err) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+  }
+
   try {
     const {
-      userId,
       cardId,
       receiverUserId,
       receiverCardId,
       amount,
-      firstname,
-      lastname,
+      passcode, // 👈 Extract passcode from body
       transactionNo,
       cardType,
+      // ❌ Removed userId, firstname, lastname from body — we use DB/Token instead
     } = req.body;
 
     const transferAmount = Number(amount);
@@ -15663,16 +15682,16 @@ app.post('/wallet-to-wallet', async (req, res) => {
     // 1. VALIDATION & REFERENCES
     // =====================================================
     if (
-      !userId ||
       !cardId ||
       !receiverUserId ||
       !receiverCardId ||
       !transferAmount ||
-      transferAmount <= 0
+      transferAmount <= 0 ||
+      !passcode
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Missing or invalid transfer information',
+        message: 'Missing or invalid transfer information (including passcode)',
       });
     }
 
@@ -15723,6 +15742,18 @@ app.post('/wallet-to-wallet', async (req, res) => {
     const receiverCardData = receiverCardDoc.data();
 
     // =====================================================
+    // 🔒 1.5 VERIFY PASSCODE
+    // =====================================================
+    if (!senderData.passcode) {
+      return res.status(400).json({ success: false, message: 'No passcode set on this account' });
+    }
+
+    const isPasscodeValid = await bcrypt.compare(passcode, senderData.passcode);
+    if (!isPasscodeValid) {
+      return res.status(400).json({ success: false, message: 'Invalid passcode' });
+    }
+
+    // =====================================================
     // 2. RESOLVE CUSTOMER IDs & ENFORCE NUBAN RULE
     // =====================================================
     const senderCustomerId =
@@ -15733,7 +15764,7 @@ app.post('/wallet-to-wallet', async (req, res) => {
     const senderIsNuban = !!senderCustomerId;
     const receiverIsNuban = !!receiverCustomerId;
 
-    // 👈 NEW STRICT RULE: Both must be Nuban
+    // Both must be Nuban
     if (!senderIsNuban) {
       return res.status(400).json({
         success: false,
@@ -15911,8 +15942,8 @@ app.post('/wallet-to-wallet', async (req, res) => {
       cardType: receiverCardData.cardType || 'wallet',
       senderUserId: userId,
       receiverUserId,
-      firstname: firstname || senderData.firstName || senderData.firstname || "",
-      lastname: lastname || senderData.lastName || senderData.lastname || "",
+      firstname: senderData.firstName || senderData.firstname || "",
+      lastname: senderData.lastName || senderData.lastname || "",
       transactionNo: reference,
       xpressReference,
       transferType: 'xpress_to_xpress',
