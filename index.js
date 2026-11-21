@@ -8763,7 +8763,35 @@ app.post('/create-xpress-wallet', async (req, res) => {
 // });
 
 
+app.get('/api/resolve-card/:cardNumber', async (req, res) => {
+  try {
+    const { cardNumber } = req.params;
+    
+    // Optional: Check if the requester is authenticated
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
 
+    const cardDoc = await db.collection('Cards').doc(cardNumber).get();
+    
+    if (!cardDoc.exists) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    const data = cardDoc.data();
+    
+    // ONLY return what is needed for name resolution
+    res.json({
+      success: true,
+      firstname: data.firstname,
+      lastname: data.lastname,
+      // Never return balance, fcm, or phonenumber here!
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 app.post('/create-xpress-tier2-wallet', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH: derive userId from verified token
