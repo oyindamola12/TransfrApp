@@ -2098,97 +2098,97 @@ app.post('/api/auth/reset-passcode/initiate', async (req, res) => {
 // STEP 2 — Complete: set new passcode
 // Requires: Firebase ID token (proves OTP passed)
 // ─────────────────────────────────────────────────────
-app.post('/api/auth/reset-passcode/complete', async (req, res) => {
-  try {
-    // ── Verify Firebase token ──
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: 'No token provided' });
-    }
-    let decoded;
-    try {
-      decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
-    } catch {
-      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
-    }
-    const phone = decoded.phone_number;
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'No phone in token' });
-    }
+// app.post('/api/auth/reset-passcode/complete', async (req, res) => {
+//   try {
+//     // ── Verify Firebase token ──
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader?.startsWith('Bearer ')) {
+//       return res.status(401).json({ success: false, message: 'No token provided' });
+//     }
+//     let decoded;
+//     try {
+//       decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+//     } catch {
+//       return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+//     }
+//     const phone = decoded.phone_number;
+//     if (!phone) {
+//       return res.status(400).json({ success: false, message: 'No phone in token' });
+//     }
 
-    // ── Validate new passcode ──
-    const { newPasscode, newPasscode2 } = req.body;
+//     // ── Validate new passcode ──
+//     const { newPasscode, newPasscode2 } = req.body;
 
-    if (!newPasscode || typeof newPasscode !== 'string' || !/^\d{6}$/.test(newPasscode)) {
-      return res.status(400).json({
-        success: false,
-        code: 'INVALID_PASSCODE',
-        message: 'Passcode must be exactly 6 digits',
-      });
-    }
-    if (newPasscode !== newPasscode2) {
-      return res.status(400).json({
-        success: false,
-        code: 'MISMATCH',
-        message: 'Passcodes do not match',
-      });
-    }
+//     if (!newPasscode || typeof newPasscode !== 'string' || !/^\d{6}$/.test(newPasscode)) {
+//       return res.status(400).json({
+//         success: false,
+//         code: 'INVALID_PASSCODE',
+//         message: 'Passcode must be exactly 6 digits',
+//       });
+//     }
+//     if (newPasscode !== newPasscode2) {
+//       return res.status(400).json({
+//         success: false,
+//         code: 'MISMATCH',
+//         message: 'Passcodes do not match',
+//       });
+//     }
 
-    // Weak-passcode block (optional but recommended)
-    const weak = ['000000', '111111', '222222', '333333', '444444',
-                  '555555', '666666', '777777', '888888', '999999',
-                  '123456', '654321'];
-    if (weak.includes(newPasscode)) {
-      return res.status(400).json({
-        success: false,
-        code: 'WEAK_PASSCODE',
-        message: 'This passcode is too easy to guess. Choose a different one.',
-      });
-    }
+//     // Weak-passcode block (optional but recommended)
+//     const weak = ['000000', '111111', '222222', '333333', '444444',
+//                   '555555', '666666', '777777', '888888', '999999',
+//                   '123456', '654321'];
+//     if (weak.includes(newPasscode)) {
+//       return res.status(400).json({
+//         success: false,
+//         code: 'WEAK_PASSCODE',
+//         message: 'This passcode is too easy to guess. Choose a different one.',
+//       });
+//     }
 
-    // ── Verify user exists ──
-    const userRef = db.collection('users').doc(phone);
-    const userSnap = await userRef.get();
-    if (!userSnap.exists) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+//     // ── Verify user exists ──
+//     const userRef = db.collection('users').doc(phone);
+//     const userSnap = await userRef.get();
+//     if (!userSnap.exists) {
+//       return res.status(404).json({ success: false, message: 'User not found' });
+//     }
 
-    // ── Hash and save ──
-    const hashed = await bcrypt.hash(newPasscode, 10);
+//     // ── Hash and save ──
+//     const hashed = await bcrypt.hash(newPasscode, 10);
 
-    const batch = db.batch();
+//     const batch = db.batch();
 
-    batch.update(userRef, {
-      passcode: hashed,
-      passcodeResetAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+//     batch.update(userRef, {
+//       passcode: hashed,
+//       passcodeResetAt: admin.firestore.FieldValue.serverTimestamp(),
+//     });
 
-    // Audit log
-    const logRef = userRef.collection('securityLog').doc();
-    batch.set(logRef, {
-      type: 'PasscodeReset',
-      phone,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'] || '',
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
+//     // Audit log
+//     const logRef = userRef.collection('securityLog').doc();
+//     batch.set(logRef, {
+//       type: 'PasscodeReset',
+//       phone,
+//       ip: req.ip,
+//       userAgent: req.headers['user-agent'] || '',
+//       timestamp: admin.firestore.FieldValue.serverTimestamp(),
+//     });
 
-    await batch.commit();
+//     await batch.commit();
 
-    // Clear any lockout caused by the forgotten passcode
-    clearAttempts(phone);
-    resetAttempts.delete(phone);
+//     // Clear any lockout caused by the forgotten passcode
+//     clearAttempts(phone);
+//     resetAttempts.delete(phone);
 
-    return res.json({
-      success: true,
-      message: 'Passcode reset successfully',
-    });
+//     return res.json({
+//       success: true,
+//       message: 'Passcode reset successfully',
+//     });
 
-  } catch (e) {
-    console.error('reset-complete error:', e);
-    return res.status(500).json({ success: false, message: 'Failed to reset passcode' });
-  }
-});
+//   } catch (e) {
+//     console.error('reset-complete error:', e);
+//     return res.status(500).json({ success: false, message: 'Failed to reset passcode' });
+//   }
+// });
 
 app.post('/api/auth/reset-passcode/complete', async (req, res) => {
   try {
@@ -2246,6 +2246,7 @@ app.post('/api/auth/reset-passcode/complete', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to reset passcode' });
   }
 });
+
 app.post('/bank-withdrawal', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH: derive userId from verified token
@@ -2668,6 +2669,109 @@ app.post('/bank-withdrawal', async (req, res) => {
 });
 
 
+// app.post('/api/register', async (req, res) => {
+//   try {
+//     // 1. Get the Firebase Token from the header
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+//       return res.status(401).json({ success: false, message: 'No token provided' });
+//     }
+//     const idToken = authHeader.split(' ')[1];
+
+//     // 2. Verify the token with Firebase (Proves they own the phone number)
+//     const decodedToken = await admin.auth().verifyIdToken(idToken);
+//     const verifiedPhoneNumber = decodedToken.phone_number; // e.g., +2349153525725
+
+//     if (!verifiedPhoneNumber) {
+//       return res.status(400).json({ success: false, message: 'No phone number in token' });
+//     }
+
+//     const { firstname, lastname, passcode, accountType, fcmToken, cardNo, ticketNo } = req.body;
+
+//     // 3. Hash the passcode securely
+//     const hashedPasscode = await bcrypt.hash(passcode, 10);
+
+//     // 4. Save to Firestore via Backend
+//     const userRef = db.collection('users').doc(verifiedPhoneNumber);
+//     const timeStampDate = admin.firestore.FieldValue.serverTimestamp();
+
+//     const batch = db.batch();
+
+//     // Save User Profile
+//     batch.set(userRef, {
+//       lastname,
+//       firstname,
+//       phonenumber: verifiedPhoneNumber,
+//       passcode: hashedPasscode, // 👈 Hashed, not plain text!
+//       email: '',
+//       createdAt: timeStampDate,
+//       status: 'Already signed up',
+//       termsAndConditions: 'Accepted',
+//       fcm: fcmToken,
+//       notification: false,
+//       inappnotification: false,
+//       receivedGiveaway: false,
+//       accountType: accountType,
+//       tier: 0,
+//       nuban: false
+//     });
+
+//     // Save Wallet Card
+//     const cardRef = userRef.collection('Cards').doc(cardNo);
+//     batch.set(cardRef, {
+//       cardNumber: cardNo,
+//       balance: 0,
+//       num: 1,
+//       createdAt: timeStampDate,
+//       firstname,
+//       lastname,
+//       phonenumber: verifiedPhoneNumber,
+//       fcm: fcmToken,
+//       cardType: 'wallet',
+//       xpressWallet: { accountType: 'norminal' }
+//     });
+
+//     // Save Global Card
+//     const globalCardRef = db.collection('Cards').doc(cardNo);
+//     batch.set(globalCardRef, {
+//       cardNumber: cardNo,
+//       balance: 0,
+//       createdAt: timeStampDate,
+//       firstname,
+//       lastname,
+//       phonenumber: verifiedPhoneNumber,
+//       num: 1,
+//       fcm: fcmToken,
+//       cardType: 'wallet'
+//     });
+
+//     // Save Ticket
+//     const ticketRef = userRef.collection('tickets').doc(ticketNo);
+//     batch.set(ticketRef, {
+//       cardNumber: ticketNo,
+//       balance: 0,
+//       num: 'ticket',
+//       createdAt: timeStampDate,
+//       firstname,
+//       lastname,
+//       phonenumber: verifiedPhoneNumber,
+//       fcm: fcmToken,
+//       cardType: 'ticket',
+//       businessType: 'ticket'
+//     });
+
+//     await batch.commit();
+
+//     return res.status(201).json({ success: true, message: 'User registered successfully' });
+
+//   } catch (error) {
+//     console.error('Registration Error:', error);
+//     return res.status(500).json({ success: false, message: 'Registration failed' });
+//   }
+// });
+
+// POST /api/giveaway/claim
+
 app.post('/api/register', async (req, res) => {
   try {
     // 1. Get the Firebase Token from the header
@@ -2685,23 +2789,34 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'No phone number in token' });
     }
 
-    const { firstname, lastname, passcode, accountType, fcmToken, cardNo, ticketNo } = req.body;
+    // Note: We no longer need cardNo from req.body
+    const { firstname, lastname, passcode, accountType, fcmToken, ticketNo } = req.body;
 
-    // 3. Hash the passcode securely
+    // 3. Basic Validation
+    if (!firstname || !lastname || !passcode || !ticketNo) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    // 4. SECURITY CHECK: Prevent overwriting existing users
+    const userRef = db.collection('users').doc(verifiedPhoneNumber);
+    const userDoc = await userRef.get();
+
+    if (userDoc.exists) {
+      return res.status(400).json({ success: false, message: 'User already exists. Please log in instead.' });
+    }
+
+    // 5. Hash the passcode securely
     const hashedPasscode = await bcrypt.hash(passcode, 10);
 
-    // 4. Save to Firestore via Backend
-    const userRef = db.collection('users').doc(verifiedPhoneNumber);
     const timeStampDate = admin.firestore.FieldValue.serverTimestamp();
-
     const batch = db.batch();
 
-    // Save User Profile
+    // Save User Profile (Tier starts at 0 until Xpress Wallet is created)
     batch.set(userRef, {
       lastname,
       firstname,
       phonenumber: verifiedPhoneNumber,
-      passcode: hashedPasscode, // 👈 Hashed, not plain text!
+      passcode: hashedPasscode, 
       email: '',
       createdAt: timeStampDate,
       status: 'Already signed up',
@@ -2711,40 +2826,11 @@ app.post('/api/register', async (req, res) => {
       inappnotification: false,
       receivedGiveaway: false,
       accountType: accountType,
-      tier: 0,
+      tier: 0, 
       nuban: false
     });
 
-    // Save Wallet Card
-    const cardRef = userRef.collection('Cards').doc(cardNo);
-    batch.set(cardRef, {
-      cardNumber: cardNo,
-      balance: 0,
-      num: 1,
-      createdAt: timeStampDate,
-      firstname,
-      lastname,
-      phonenumber: verifiedPhoneNumber,
-      fcm: fcmToken,
-      cardType: 'wallet',
-      xpressWallet: { accountType: 'norminal' }
-    });
-
-    // Save Global Card
-    const globalCardRef = db.collection('Cards').doc(cardNo);
-    batch.set(globalCardRef, {
-      cardNumber: cardNo,
-      balance: 0,
-      createdAt: timeStampDate,
-      firstname,
-      lastname,
-      phonenumber: verifiedPhoneNumber,
-      num: 1,
-      fcm: fcmToken,
-      cardType: 'wallet'
-    });
-
-    // Save Ticket
+    // Save Initial Ticket
     const ticketRef = userRef.collection('tickets').doc(ticketNo);
     batch.set(ticketRef, {
       cardNumber: ticketNo,
@@ -2759,17 +2845,18 @@ app.post('/api/register', async (req, res) => {
       businessType: 'ticket'
     });
 
+    // ❌ Card creation removed from here. It will happen in /create-xpress-wallet.
+
     await batch.commit();
 
     return res.status(201).json({ success: true, message: 'User registered successfully' });
 
   } catch (error) {
     console.error('Registration Error:', error);
-    return res.status(500).json({ success: false, message: 'Registration failed' });
+    return res.status(500).json({ success: false, message: 'Registration failed due to a server error.' });
   }
 });
 
-// POST /api/giveaway/claim
 app.post('/api/giveaway/claim', async (req, res) => {
   try {
     // 1. Verify identity
@@ -7289,6 +7376,346 @@ const migrateTransfrCredit = async (
 
 
 
+// app.post('/create-xpress-wallet', async (req, res) => {
+//   // ─────────────────────────────────────────────────────
+//   // 🔒 AUTH: derive userId from verified token
+//   // ─────────────────────────────────────────────────────
+//   let userId;
+//   try {
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader?.startsWith('Bearer ')) {
+//       return res.status(401).json({ success: false, message: 'No token provided' });
+//     }
+//     const decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+//     userId = decoded.phone_number;
+//     if (!userId) {
+//       return res.status(400).json({ success: false, message: 'No phone in token' });
+//     }
+//   } catch {
+//     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+//   }
+
+//   try {
+//     const {
+//       cardId,
+//       bvn,
+//       firstName,
+//       lastName,
+//       dateOfBirth,
+//       email,
+//       address,
+//       transactionNo,
+//       // ❌ userId, phoneNumber — derived from token
+//     } = req.body;
+
+//     // ─────────────────────────────────────────────────────
+//     // 1. VALIDATE
+//     // ─────────────────────────────────────────────────────
+//     if (!cardId || !bvn || !firstName || !lastName || !dateOfBirth || !email || !address || !transactionNo) {
+//       return res.status(400).json({ success: false, message: 'Missing required fields' });
+//     }
+
+//     if (typeof transactionNo !== 'string' || !/^[A-Za-z0-9_-]{6,64}$/.test(transactionNo)) {
+//       return res.status(400).json({ success: false, message: 'Invalid transactionNo' });
+//     }
+//     if (typeof cardId !== 'string' || cardId.length < 4 || cardId.length > 64) {
+//       return res.status(400).json({ success: false, message: 'Invalid cardId' });
+//     }
+
+//     const cleanBvn = String(bvn).replace(/\D/g, '');
+//     if (cleanBvn.length !== 11) {
+//       return res.status(400).json({ success: false, message: 'BVN must be 11 digits' });
+//     }
+
+//     if (!/^\S+@\S+\.\S+$/.test(email)) {
+//       return res.status(400).json({ success: false, message: 'Invalid email' });
+//     }
+
+//     if (firstName.length > 100 || lastName.length > 100 || address.length > 300) {
+//       return res.status(400).json({ success: false, message: 'Field too long' });
+//     }
+
+//     const dob = new Date(dateOfBirth);
+//     if (isNaN(dob.getTime())) {
+//       return res.status(400).json({ success: false, message: 'Invalid date of birth' });
+//     }
+//     const ageYears = (Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+//     if (ageYears < 18) {
+//       return res.status(400).json({ success: false, message: 'Must be 18 or older' });
+//     }
+//     const formattedDob = dob.toISOString().split('T')[0];
+
+//     // ─────────────────────────────────────────────────────
+//     // 🔒 PHONE from token — NOT from body
+//     // ─────────────────────────────────────────────────────
+//     const cleanPhone = userId.replace(/\D/g, '');
+//     if (cleanPhone.length < 10) {
+//       return res.status(400).json({ success: false, message: 'Invalid phone number in token' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 2. FIRESTORE REFERENCES
+//     // ─────────────────────────────────────────────────────
+//     const userRef = db.collection('users').doc(userId);
+//     const oldCardRef = userRef.collection('Cards').doc(cardId);
+//     const oldGlobalCardRef = db.collection('Cards').doc(cardId);
+//     const createLogRef = userRef.collection('Transactions').doc(transactionNo);
+
+//     const [userDoc, cardDoc, globalCardDoc, existingLog] = await Promise.all([
+//       userRef.get(),
+//       oldCardRef.get(),
+//       oldGlobalCardRef.get(),
+//       createLogRef.get(),
+//     ]);
+
+//     // Idempotency — if this exact transaction already succeeded, return success
+//     if (existingLog.exists && existingLog.data().status === 'success') {
+//       const d = existingLog.data();
+//       return res.status(200).json({
+//         success: true,
+//         message: 'Wallet already created',
+//         data: {
+//           customerId: d.customerId,
+//           walletId: d.walletId,
+//           accountNumber: d.accountNumber,
+//           accountName: d.accountName,
+//           bankName: d.bankName,
+//           bankCode: d.bankCode,
+//           tier: d.tier,
+//         },
+//       });
+//     }
+
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ success: false, message: 'User not found' });
+//     }
+//     if (!cardDoc.exists) {
+//       return res.status(404).json({ success: false, message: 'Card not found on your account' });
+//     }
+
+//     const userData = userDoc.data();
+//     const cardData = cardDoc.data();
+//     const globalCardData = globalCardDoc.exists ? globalCardDoc.data() : {};
+
+//     // ─────────────────────────────────────────────────────
+//     // 3. PREVENT DUPLICATE
+//     // ─────────────────────────────────────────────────────
+//     const existingCustomerId =
+//       cardData?.xpress?.customerId ||
+//       cardData?.xpressWallet?.customerId ||
+//       userData?.xpress?.customerId;
+
+//     if (existingCustomerId) {
+//       return res.status(400).json({
+//         success: false,
+//         code: 'ALREADY_HAS_WALLET',
+//         message: 'User already has an Xpress wallet',
+//         data: { customerId: existingCustomerId },
+//       });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 4. CREATE WALLET ON XPRESS
+//     // ─────────────────────────────────────────────────────
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.post(
+//         `${process.env.XPRESS_BASE_URL}/wallet`,
+//         {
+//           tier: 'TIER_1',
+//           bvn: cleanBvn,
+//           firstName,
+//           lastName,
+//           dateOfBirth: formattedDob,
+//           phoneNumber: cleanPhone,     // 👈 from token
+//           email,
+//           address,
+//         },
+//         {
+//           headers: {
+//             Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//           timeout: 30000,
+//         },
+//       );
+//     } catch (xpressError) {
+//       // 👈 Don't log the raw body — BVN may be echoed back
+//       console.error('XPRESS CREATE WALLET ERROR:', {
+//         status: xpressError.response?.status,
+//         message: xpressError.response?.data?.message,
+//       });
+//       return res.status(xpressError.response?.status || 400).json({
+//         success: false,
+//         message: xpressError.response?.data?.message || 'Failed to create Xpress wallet',
+//       });
+//     }
+
+//     const customer = xpressResponse.data?.customer;
+//     const wallet = xpressResponse.data?.wallet;
+
+//     if (!customer?.id || !wallet?.id) {
+//       console.error('XPRESS create returned without customer/wallet:', {
+//         customer: customer?.id,
+//         wallet: wallet?.id,
+//       });
+//       return res.status(500).json({
+//         success: false,
+//         message: 'Xpress wallet created but customer/wallet info missing',
+//       });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 5. PREPARE NEW WALLET DATA
+//     // ─────────────────────────────────────────────────────
+//     const newCardId = wallet.accountNumber;
+//     if (!newCardId) {
+//       return res.status(500).json({ success: false, message: 'Xpress returned no account number' });
+//     }
+
+//     const newCardRef = userRef.collection('Cards').doc(newCardId);
+//     const newGlobalCardRef = db.collection('Cards').doc(newCardId);
+
+//     const xpressReference = {
+//       customerId: customer.id,
+//       walletId: wallet.id,
+//       accountNumber: wallet.accountNumber || '',
+//       accountName: wallet.accountName || '',
+//       bankName: wallet.bankName || '',
+//       bankCode: wallet.bankCode || '',
+//       accountReference: wallet.accountReference || '',
+//       currency: wallet.currency || 'NGN',
+//       status: wallet.status || 'ACTIVE',
+//       tier: customer.tier || 'TIER_1',
+//       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//     };
+
+//     // ─────────────────────────────────────────────────────
+//     // 6. ATOMIC WRITES
+//     // ─────────────────────────────────────────────────────
+//     const batch = db.batch();
+
+//     // User-scoped new card
+//     batch.set(newCardRef, {
+//       ...cardData,
+//       cardNumber: newCardId,
+//       accountNumber: newCardId,
+//       xpress: xpressReference,
+//       nubanEnabled: true,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+//     batch.delete(oldCardRef);
+
+//     // Global card
+//     if (globalCardDoc.exists) {
+//       batch.set(newGlobalCardRef, {
+//         ...globalCardData,
+//         cardNumber: newCardId,
+//         accountNumber: newCardId,
+//         xpress: xpressReference,
+//         nubanEnabled: true,
+//         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//       batch.delete(oldGlobalCardRef);
+//     } else {
+//       batch.set(newGlobalCardRef, {
+//         cardNumber: newCardId,
+//         accountNumber: newCardId,
+//         xpress: xpressReference,
+//         nubanEnabled: true,
+//         phonenumber: userId,
+//         cardType: 'wallet',
+//         balance: 0,
+//         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//     }
+
+//     // Root user doc
+//     batch.set(
+//       userRef,
+//       {
+//         xpress: xpressReference,
+//         nubanEnabled: true,
+//         tier: customer.tier || 'TIER_1',
+//         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//       },
+//       { merge: true },
+//     );
+
+//     // 👈 Transaction log — enables idempotency on retry
+//     batch.set(createLogRef, {
+//       type: 'WalletCreated',
+//       provider: 'xpress',
+//       status: 'success',
+//       userId,
+//       oldCardId: cardId,
+//       newCardId,
+//       customerId: customer.id,
+//       walletId: wallet.id,
+//       accountNumber: wallet.accountNumber,
+//       accountName: wallet.accountName,
+//       bankName: wallet.bankName,
+//       tier: customer.tier,
+//       paymentMethod: 'xpress',
+//       transactionNo,
+//       date: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     // Global log
+//     batch.set(db.collection('AllTransaction').doc(transactionNo), {
+//       type: 'WalletCreated',
+//       provider: 'xpress',
+//       userId,
+//       oldCardId: cardId,
+//       newCardId,
+//       customerId: customer.id,
+//       walletId: wallet.id,
+//       accountNumber: wallet.accountNumber,
+//       tier: customer.tier,
+//       status: 'success',
+//       paymentMethod: 'xpress',
+//       reference: transactionNo,
+//       date: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     await batch.commit();
+
+//     // ─────────────────────────────────────────────────────
+//     // 7. RESPONSE
+//     // ─────────────────────────────────────────────────────
+//     return res.status(201).json({
+//       success: true,
+//       message: 'Wallet created successfully',
+//       data: {
+//         customerId: customer.id,
+//         walletId: wallet.id,
+//         accountNumber: wallet.accountNumber,
+//         accountName: wallet.accountName,
+//         bankName: wallet.bankName,
+//         bankCode: wallet.bankCode,
+//         accountReference: wallet.accountReference,
+//         availableBalance: wallet.availableBalance || 0,
+//         bookedBalance: wallet.bookedBalance || 0,
+//         currency: wallet.currency || 'NGN',
+//         status: wallet.status || 'ACTIVE',
+//         tier: customer.tier || 'TIER_1',
+//       },
+//     });
+
+//   } catch (error) {
+//     // 👈 Don't leak BVN in error logs
+//     console.error('CREATE WALLET ERROR:', {
+//       message: error.message,
+//       status: error.response?.status,
+//       apiMessage: error.response?.data?.message,
+//     });
+//     return res.status(error.response?.status || 500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || 'Unable to create wallet',
+//     });
+//   }
+// });
+
 app.post('/create-xpress-wallet', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH: derive userId from verified token
@@ -7310,7 +7737,6 @@ app.post('/create-xpress-wallet', async (req, res) => {
 
   try {
     const {
-      cardId,
       bvn,
       firstName,
       lastName,
@@ -7318,21 +7744,18 @@ app.post('/create-xpress-wallet', async (req, res) => {
       email,
       address,
       transactionNo,
-      // ❌ userId, phoneNumber — derived from token
+      fcmToken 
     } = req.body;
 
     // ─────────────────────────────────────────────────────
     // 1. VALIDATE
     // ─────────────────────────────────────────────────────
-    if (!cardId || !bvn || !firstName || !lastName || !dateOfBirth || !email || !address || !transactionNo) {
+    if (!bvn || !firstName || !lastName || !dateOfBirth || !email || !address || !transactionNo) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
     if (typeof transactionNo !== 'string' || !/^[A-Za-z0-9_-]{6,64}$/.test(transactionNo)) {
       return res.status(400).json({ success: false, message: 'Invalid transactionNo' });
-    }
-    if (typeof cardId !== 'string' || cardId.length < 4 || cardId.length > 64) {
-      return res.status(400).json({ success: false, message: 'Invalid cardId' });
     }
 
     const cleanBvn = String(bvn).replace(/\D/g, '');
@@ -7342,10 +7765,6 @@ app.post('/create-xpress-wallet', async (req, res) => {
 
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       return res.status(400).json({ success: false, message: 'Invalid email' });
-    }
-
-    if (firstName.length > 100 || lastName.length > 100 || address.length > 300) {
-      return res.status(400).json({ success: false, message: 'Field too long' });
     }
 
     const dob = new Date(dateOfBirth);
@@ -7358,9 +7777,6 @@ app.post('/create-xpress-wallet', async (req, res) => {
     }
     const formattedDob = dob.toISOString().split('T')[0];
 
-    // ─────────────────────────────────────────────────────
-    // 🔒 PHONE from token — NOT from body
-    // ─────────────────────────────────────────────────────
     const cleanPhone = userId.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
       return res.status(400).json({ success: false, message: 'Invalid phone number in token' });
@@ -7370,14 +7786,10 @@ app.post('/create-xpress-wallet', async (req, res) => {
     // 2. FIRESTORE REFERENCES
     // ─────────────────────────────────────────────────────
     const userRef = db.collection('users').doc(userId);
-    const oldCardRef = userRef.collection('Cards').doc(cardId);
-    const oldGlobalCardRef = db.collection('Cards').doc(cardId);
     const createLogRef = userRef.collection('Transactions').doc(transactionNo);
 
-    const [userDoc, cardDoc, globalCardDoc, existingLog] = await Promise.all([
+    const [userDoc, existingLog] = await Promise.all([
       userRef.get(),
-      oldCardRef.get(),
-      oldGlobalCardRef.get(),
       createLogRef.get(),
     ]);
 
@@ -7402,28 +7814,18 @@ app.post('/create-xpress-wallet', async (req, res) => {
     if (!userDoc.exists) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    if (!cardDoc.exists) {
-      return res.status(404).json({ success: false, message: 'Card not found on your account' });
-    }
 
     const userData = userDoc.data();
-    const cardData = cardDoc.data();
-    const globalCardData = globalCardDoc.exists ? globalCardDoc.data() : {};
 
     // ─────────────────────────────────────────────────────
     // 3. PREVENT DUPLICATE
     // ─────────────────────────────────────────────────────
-    const existingCustomerId =
-      cardData?.xpress?.customerId ||
-      cardData?.xpressWallet?.customerId ||
-      userData?.xpress?.customerId;
-
-    if (existingCustomerId) {
+    if (userData?.xpress?.customerId) {
       return res.status(400).json({
         success: false,
         code: 'ALREADY_HAS_WALLET',
-        message: 'User already has an Xpress wallet',
-        data: { customerId: existingCustomerId },
+        message: 'User already have an Xpress wallet',
+        data: { customerId: userData.xpress.customerId },
       });
     }
 
@@ -7440,7 +7842,7 @@ app.post('/create-xpress-wallet', async (req, res) => {
           firstName,
           lastName,
           dateOfBirth: formattedDob,
-          phoneNumber: cleanPhone,     // 👈 from token
+          phoneNumber: cleanPhone,
           email,
           address,
         },
@@ -7453,7 +7855,6 @@ app.post('/create-xpress-wallet', async (req, res) => {
         },
       );
     } catch (xpressError) {
-      // 👈 Don't log the raw body — BVN may be echoed back
       console.error('XPRESS CREATE WALLET ERROR:', {
         status: xpressError.response?.status,
         message: xpressError.response?.data?.message,
@@ -7467,40 +7868,43 @@ app.post('/create-xpress-wallet', async (req, res) => {
     const customer = xpressResponse.data?.customer;
     const wallet = xpressResponse.data?.wallet;
 
-    if (!customer?.id || !wallet?.id) {
-      console.error('XPRESS create returned without customer/wallet:', {
-        customer: customer?.id,
-        wallet: wallet?.id,
-      });
+    if (!customer?.id || !wallet?.id || !wallet?.accountNumber) {
+      console.error('XPRESS create returned without customer/wallet/accountNumber');
       return res.status(500).json({
         success: false,
-        message: 'Xpress wallet created but customer/wallet info missing',
+        message: 'Xpress wallet created but account info missing',
       });
     }
 
     // ─────────────────────────────────────────────────────
-    // 5. PREPARE NEW WALLET DATA
+    // 5. PREPARE NEW WALLET/CARD DATA
     // ─────────────────────────────────────────────────────
-    const newCardId = wallet.accountNumber;
-    if (!newCardId) {
-      return res.status(500).json({ success: false, message: 'Xpress returned no account number' });
-    }
+    const newCardId = wallet.accountNumber; 
 
     const newCardRef = userRef.collection('Cards').doc(newCardId);
     const newGlobalCardRef = db.collection('Cards').doc(newCardId);
 
+    const timeStampDate = admin.firestore.FieldValue.serverTimestamp();
+
+    // Build the exact xpress map you requested
     const xpressReference = {
-      customerId: customer.id,
-      walletId: wallet.id,
+      accountName: wallet.accountName || `${firstName} ${lastName}`,
       accountNumber: wallet.accountNumber || '',
-      accountName: wallet.accountName || '',
-      bankName: wallet.bankName || '',
-      bankCode: wallet.bankCode || '',
       accountReference: wallet.accountReference || '',
+      availableBalance: wallet.availableBalance || 0,
+      bankCode: wallet.bankCode || '',
+      bankName: wallet.bankName || 'Xpresswallet',
+      bookedBalance: wallet.bookedBalance || 0,
+      createdAt: new Date().toISOString(), // String format as requested
       currency: wallet.currency || 'NGN',
+      customerId: customer.id,
+      email: email,
+      firstName: firstName,
+      lastName: lastName,
+      lastSyncedAt: timeStampDate, // Firestore timestamp
       status: wallet.status || 'ACTIVE',
-      tier: customer.tier || 'TIER_1',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: new Date().toISOString(), // String format as requested
+      walletId: wallet.id
     };
 
     // ─────────────────────────────────────────────────────
@@ -7508,70 +7912,59 @@ app.post('/create-xpress-wallet', async (req, res) => {
     // ─────────────────────────────────────────────────────
     const batch = db.batch();
 
-    // User-scoped new card
-    batch.set(newCardRef, {
-      ...cardData,
+    // Exact structure for User-Scoped Card
+    const cardData = {
+      balance: wallet.availableBalance || 0,
+      businessType: "ticket", // Kept exactly as in your sample
+      cardName: {
+        firstname: firstName,
+        lastname: lastName
+      },
       cardNumber: newCardId,
-      accountNumber: newCardId,
+      cardType: "wallet",
+      createdAt: timeStampDate,
+      fcm: fcmToken || userData.fcm || '',
+      firstname: firstName,
+      lastname: lastName,
+      num: 1,
+      phonenumber: userId,
+      updatedAt: timeStampDate,
       xpress: xpressReference,
+      accountNumber: newCardId, // keeping for backward compatibility
       nubanEnabled: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    batch.delete(oldCardRef);
+    };
 
-    // Global card
-    if (globalCardDoc.exists) {
-      batch.set(newGlobalCardRef, {
-        ...globalCardData,
-        cardNumber: newCardId,
-        accountNumber: newCardId,
-        xpress: xpressReference,
-        nubanEnabled: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      batch.delete(oldGlobalCardRef);
-    } else {
-      batch.set(newGlobalCardRef, {
-        cardNumber: newCardId,
-        accountNumber: newCardId,
-        xpress: xpressReference,
-        nubanEnabled: true,
-        phonenumber: userId,
-        cardType: 'wallet',
-        balance: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
+    batch.set(newCardRef, cardData);
+    batch.set(newGlobalCardRef, cardData); // Global card gets the exact same data
 
-    // Root user doc
+    // Update Root User Doc with TIER_1 and Xpress details
     batch.set(
       userRef,
       {
         xpress: xpressReference,
         nubanEnabled: true,
-        tier: customer.tier || 'TIER_1',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        tier: 'TIER_1',
+        updatedAt: timeStampDate,
       },
       { merge: true },
     );
 
-    // 👈 Transaction log — enables idempotency on retry
+    // Transaction log — enables idempotency on retry
     batch.set(createLogRef, {
       type: 'WalletCreated',
       provider: 'xpress',
       status: 'success',
       userId,
-      oldCardId: cardId,
       newCardId,
       customerId: customer.id,
       walletId: wallet.id,
       accountNumber: wallet.accountNumber,
       accountName: wallet.accountName,
       bankName: wallet.bankName,
-      tier: customer.tier,
+      tier: 'TIER_1',
       paymentMethod: 'xpress',
       transactionNo,
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: timeStampDate,
     });
 
     // Global log
@@ -7579,16 +7972,15 @@ app.post('/create-xpress-wallet', async (req, res) => {
       type: 'WalletCreated',
       provider: 'xpress',
       userId,
-      oldCardId: cardId,
       newCardId,
       customerId: customer.id,
       walletId: wallet.id,
       accountNumber: wallet.accountNumber,
-      tier: customer.tier,
+      tier: 'TIER_1',
       status: 'success',
       paymentMethod: 'xpress',
       reference: transactionNo,
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: timeStampDate,
     });
 
     await batch.commit();
@@ -7611,12 +8003,11 @@ app.post('/create-xpress-wallet', async (req, res) => {
         bookedBalance: wallet.bookedBalance || 0,
         currency: wallet.currency || 'NGN',
         status: wallet.status || 'ACTIVE',
-        tier: customer.tier || 'TIER_1',
+        tier: 'TIER_1',
       },
     });
 
   } catch (error) {
-    // 👈 Don't leak BVN in error logs
     console.error('CREATE WALLET ERROR:', {
       message: error.message,
       status: error.response?.status,
@@ -7988,6 +8379,391 @@ app.post('/create-xpress-wallet', async (req, res) => {
 // });
 
 
+// app.post('/create-xpress-tier2-wallet', async (req, res) => {
+//   // ─────────────────────────────────────────────────────
+//   // 🔒 AUTH: derive userId from verified token
+//   // ─────────────────────────────────────────────────────
+//   let userId;
+//   try {
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader?.startsWith('Bearer ')) {
+//       return res.status(401).json({ success: false, message: 'No token provided' });
+//     }
+//     const decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+//     userId = decoded.phone_number;
+//     if (!userId) {
+//       return res.status(400).json({ success: false, message: 'No phone in token' });
+//     }
+//   } catch {
+//     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+//   }
+
+//   let uploadedPassportPath = null;   // 👈 for cleanup on failure
+
+//   try {
+//     const {
+//       cardId,
+//       bvn,
+//       firstName,
+//       lastName,
+//       dateOfBirth,
+//       email,
+//       address,
+//       passportPhoto,
+//       transactionNo,
+//       // ❌ userId, phoneNumber — derived from token
+//     } = req.body;
+
+//     // ─────────────────────────────────────────────────────
+//     // 1. VALIDATE
+//     // ─────────────────────────────────────────────────────
+//     if (!cardId || !bvn || !firstName || !lastName || !dateOfBirth || !email || !address || !passportPhoto || !transactionNo) {
+//       return res.status(400).json({ success: false, message: 'All Tier 2 fields are required' });
+//     }
+
+//     if (typeof transactionNo !== 'string' || !/^[A-Za-z0-9_-]{6,64}$/.test(transactionNo)) {
+//       return res.status(400).json({ success: false, message: 'Invalid transactionNo' });
+//     }
+//     if (typeof cardId !== 'string' || cardId.length < 4 || cardId.length > 64) {
+//       return res.status(400).json({ success: false, message: 'Invalid cardId' });
+//     }
+
+//     const cleanBvn = String(bvn).replace(/\D/g, '');
+//     if (cleanBvn.length !== 11) {
+//       return res.status(400).json({ success: false, message: 'BVN must be 11 digits' });
+//     }
+
+//     if (!/^\S+@\S+\.\S+$/.test(email)) {
+//       return res.status(400).json({ success: false, message: 'Invalid email' });
+//     }
+//     if (firstName.length > 100 || lastName.length > 100 || address.length > 300) {
+//       return res.status(400).json({ success: false, message: 'Field too long' });
+//     }
+
+//     // 👈 Passport size cap (base64 ~8MB = ~6MB decoded)
+//     if (typeof passportPhoto !== 'string' || passportPhoto.length > 8_000_000) {
+//       return res.status(400).json({ success: false, message: 'Passport photo too large' });
+//     }
+
+//     const dob = new Date(dateOfBirth);
+//     if (isNaN(dob.getTime())) {
+//       return res.status(400).json({ success: false, message: 'Invalid date of birth' });
+//     }
+//     const ageYears = (Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+//     if (ageYears < 18) {
+//       return res.status(400).json({ success: false, message: 'Must be 18 or older' });
+//     }
+//     const formattedDob = dob.toISOString().split('T')[0];
+
+//     // 🔒 Phone from token
+//     const cleanPhone = userId.replace(/\D/g, '');
+//     if (cleanPhone.length < 10) {
+//       return res.status(400).json({ success: false, message: 'Invalid phone in token' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 2. FIRESTORE REFERENCES
+//     // ─────────────────────────────────────────────────────
+//     const userRef = db.collection('users').doc(userId);
+//     const cardRef = userRef.collection('Cards').doc(cardId);
+//     const upgradeLogRef = userRef.collection('Transactions').doc(transactionNo);
+
+//     const [userDoc, cardDoc, existingLog] = await Promise.all([
+//       userRef.get(),
+//       cardRef.get(),
+//       upgradeLogRef.get(),
+//     ]);
+
+//     // Idempotency
+//     if (existingLog.exists && existingLog.data().status === 'success') {
+//       const d = existingLog.data();
+//       return res.status(200).json({
+//         success: true,
+//         message: 'Tier 2 upgrade already completed',
+//         data: {
+//           cardId: d.cardId,
+//           tier: d.toTier,
+//           customerId: d.customerId,
+//           walletId: d.walletId,
+//           accountNumber: d.accountNumber,
+//           passportPhoto: d.passportPhoto,
+//           reference: transactionNo,
+//         },
+//       });
+//     }
+
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ success: false, message: 'User not found' });
+//     }
+//     if (!cardDoc.exists) {
+//       return res.status(404).json({ success: false, message: 'Card not found on your account' });
+//     }
+
+//     const userData = userDoc.data();
+//     const cardData = cardDoc.data();
+
+//     // ─────────────────────────────────────────────────────
+//     // 3. VALIDATE CURRENT STATE
+//     // ─────────────────────────────────────────────────────
+//     const existingXpress = cardData?.xpress || userData?.xpress;
+//     const currentTier = existingXpress?.tier;
+
+//     if (!existingXpress?.customerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'No existing Xpress wallet found. Please create a Tier 1 wallet first.',
+//       });
+//     }
+
+//     if (currentTier === 'TIER_2' || currentTier === 'TIER_3') {
+//       return res.status(400).json({
+//         success: false,
+//         code: 'ALREADY_UPGRADED',
+//         message: `User already has a ${currentTier.replace('_', ' ')} account.`,
+//       });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 4. CALL XPRESS FIRST — upload passport only if upgrade succeeds
+//     // ─────────────────────────────────────────────────────
+//     let xpressResponse;
+//     try {
+//       // We upload passport first because Xpress expects the URL in metadata.
+//       // But we'll clean up on failure (see catch).
+//       const base64Data = passportPhoto.replace(/^data:image\/\w+;base64,/, '');
+//       const fileName = `tier2-passports/${userId}_${transactionNo}.jpg`;
+//       const file = bucket.file(fileName);
+//       const imageBuffer = Buffer.from(base64Data, 'base64');
+//       await file.save(imageBuffer, { metadata: { contentType: 'image/jpeg' } });
+
+//       // 👈 Shorter-lived signed URL (still long enough for Xpress to fetch + retain)
+//       const [signedUrl] = await file.getSignedUrl({
+//         action: 'read',
+//         expires: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000,   // 100 years
+//       });
+//       uploadedPassportPath = fileName;
+
+//       xpressResponse = await axios.put(
+//         `${process.env.XPRESS_BASE_URL}/customer/${existingXpress.customerId}`,
+//         {
+//           tier: 'TIER_2',
+//           bvn: cleanBvn,
+//           firstName,
+//           lastName,
+//           dateOfBirth: formattedDob,
+//           phoneNumber: cleanPhone,
+//           email,
+//           address,
+//           metadata: {
+//             passportPhoto: signedUrl,
+//             upgradeFrom: currentTier,
+//             upgradeTo: 'TIER_2',
+//           },
+//         },
+//         {
+//           headers: {
+//             Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//           timeout: 30000,
+//         },
+//       );
+//     } catch (xpressError) {
+//       console.error('XPRESS TIER 2 UPGRADE ERROR:', {
+//         status: xpressError.response?.status,
+//         message: xpressError.response?.data?.message,
+//       });
+
+//       // 👈 Cleanup: delete orphaned passport if it was uploaded
+//       if (uploadedPassportPath) {
+//         try {
+//           await bucket.file(uploadedPassportPath).delete();
+//           console.log('Cleaned up orphaned passport:', uploadedPassportPath);
+//         } catch (cleanupErr) {
+//           console.error('Passport cleanup failed:', cleanupErr.message);
+//         }
+//       }
+
+//       return res.status(xpressError.response?.status || 400).json({
+//         success: false,
+//         message: xpressError.response?.data?.message || 'Failed to upgrade to Tier 2',
+//       });
+//     }
+
+//     const passportUrl = await bucket.file(uploadedPassportPath).getSignedUrl({
+//       action: 'read',
+//       expires: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000,
+//     }).then(([url]) => url);
+
+//     // ─────────────────────────────────────────────────────
+//     // 5. VERIFY NEW TIER
+//     // ─────────────────────────────────────────────────────
+//     const newTier = xpressResponse.data?.customer?.tier || 'TIER_2';
+//     if (newTier !== 'TIER_2' && newTier !== 'TIER_3') {
+//       // Rollback passport
+//       if (uploadedPassportPath) {
+//         try { await bucket.file(uploadedPassportPath).delete(); } catch {}
+//       }
+//       return res.status(400).json({
+//         success: false,
+//         message: `Tier upgrade did not take effect. Current tier: ${newTier}`,
+//       });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 6. FETCH FRESH WALLET
+//     // ─────────────────────────────────────────────────────
+//     let wallet = null;
+//     try {
+//       const walletResponse = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: existingXpress.customerId },
+//           headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//           timeout: 15000,
+//         },
+//       );
+//       wallet = walletResponse.data?.wallet;
+//     } catch (fetchError) {
+//       console.warn('Could not fetch fresh wallet details:', fetchError.message);
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 7. UPDATE FIRESTORE
+//     // ─────────────────────────────────────────────────────
+//     const xpressReference = {
+//       ...existingXpress,
+//       tier: 'TIER_2',
+//       passportPhoto: passportUrl,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     };
+
+//     if (wallet) {
+//       xpressReference.accountNumber = wallet.accountNumber || xpressReference.accountNumber;
+//       xpressReference.accountName = wallet.accountName || xpressReference.accountName;
+//       xpressReference.bankName = wallet.bankName || xpressReference.bankName;
+//       xpressReference.bankCode = wallet.bankCode || xpressReference.bankCode;
+//       xpressReference.accountReference = wallet.accountReference || xpressReference.accountReference;
+//       xpressReference.status = wallet.status || xpressReference.status;
+//       xpressReference.currency = wallet.currency || xpressReference.currency;
+//     }
+
+//     const batch = db.batch();
+
+//     batch.set(cardRef, {
+//       xpress: xpressReference,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     }, { merge: true });
+
+//     batch.set(userRef, {
+//       xpress: xpressReference,
+//       tier: 'TIER_2',
+//       nubanEnabled: true,
+//       passportPhoto: passportUrl,
+//       notification: true,
+//       inappnotification: true,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     }, { merge: true });
+
+//     // User transaction log (also serves as idempotency marker)
+//     batch.set(upgradeLogRef, {
+//       type: 'TierUpgrade',
+//       provider: 'xpress',
+//       status: 'success',
+//       userId,
+//       cardId,
+//       fromTier: currentTier,
+//       toTier: 'TIER_2',
+//       customerId: existingXpress.customerId,
+//       walletId: existingXpress.walletId,
+//       accountNumber: xpressReference.accountNumber,
+//       passportPhoto: passportUrl,
+//       paymentMethod: 'xpress',
+//       reference: transactionNo,
+//       transactionNo,
+//       date: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     // Global log
+//     batch.set(db.collection('AllTransaction').doc(transactionNo), {
+//       type: 'TierUpgrade',
+//       provider: 'xpress',
+//       userId,
+//       cardId,
+//       customerId: existingXpress.customerId,
+//       walletId: existingXpress.walletId,
+//       fromTier: currentTier,
+//       toTier: 'TIER_2',
+//       status: 'success',
+//       paymentMethod: 'xpress',
+//       reference: transactionNo,
+//       date: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     await batch.commit();
+
+//     // ─────────────────────────────────────────────────────
+//     // 8. PUSH
+//     // ─────────────────────────────────────────────────────
+//     const fcmToken = userData?.fcm;
+//     if (fcmToken) {
+//       try {
+//         await messaging.send({
+//           token: fcmToken,
+//           notification: {
+//             title: 'Account Upgraded 🎉',
+//             body: "You're now a Transfr Gold (Tier 2) account holder!",
+//           },
+//           data: { type: 'tier_upgrade', tier: 'TIER_2', reference: transactionNo },
+//         });
+//       } catch (pushError) {
+//         console.error('Push notification failed:', pushError);
+//       }
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 9. RESPONSE
+//     // ─────────────────────────────────────────────────────
+//     return res.json({
+//       success: true,
+//       message: 'Tier 2 upgrade completed successfully',
+//       data: {
+//         cardId,
+//         tier: 'TIER_2',
+//         customerId: existingXpress.customerId,
+//         walletId: existingXpress.walletId,
+//         accountNumber: xpressReference.accountNumber,
+//         accountName: xpressReference.accountName,
+//         bankName: xpressReference.bankName,
+//         bankCode: xpressReference.bankCode,
+//         accountReference: xpressReference.accountReference,
+//         status: xpressReference.status,
+//         passportPhoto: passportUrl,
+//         reference: transactionNo,
+//       },
+//     });
+
+//   } catch (error) {
+//     // Cleanup on any unexpected error path
+//     if (uploadedPassportPath) {
+//       try { await bucket.file(uploadedPassportPath).delete(); } catch {}
+//     }
+
+//     console.error('TIER 2 WALLET ERROR:', {
+//       message: error.message,
+//       status: error.response?.status,
+//       apiMessage: error.response?.data?.message,
+//     });
+
+//     return res.status(error.response?.status || 500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || 'Unable to upgrade to Tier 2',
+//     });
+//   }
+// });
+
+
+
 app.post('/create-xpress-tier2-wallet', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH: derive userId from verified token
@@ -8007,7 +8783,7 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 
-  let uploadedPassportPath = null;   // 👈 for cleanup on failure
+  let uploadedPassportPath = null; 
 
   try {
     const {
@@ -8020,7 +8796,6 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
       address,
       passportPhoto,
       transactionNo,
-      // ❌ userId, phoneNumber — derived from token
     } = req.body;
 
     // ─────────────────────────────────────────────────────
@@ -8049,7 +8824,6 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Field too long' });
     }
 
-    // 👈 Passport size cap (base64 ~8MB = ~6MB decoded)
     if (typeof passportPhoto !== 'string' || passportPhoto.length > 8_000_000) {
       return res.status(400).json({ success: false, message: 'Passport photo too large' });
     }
@@ -8064,7 +8838,6 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
     }
     const formattedDob = dob.toISOString().split('T')[0];
 
-    // 🔒 Phone from token
     const cleanPhone = userId.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
       return res.status(400).json({ success: false, message: 'Invalid phone in token' });
@@ -8137,18 +8910,15 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
     // ─────────────────────────────────────────────────────
     let xpressResponse;
     try {
-      // We upload passport first because Xpress expects the URL in metadata.
-      // But we'll clean up on failure (see catch).
       const base64Data = passportPhoto.replace(/^data:image\/\w+;base64,/, '');
       const fileName = `tier2-passports/${userId}_${transactionNo}.jpg`;
       const file = bucket.file(fileName);
       const imageBuffer = Buffer.from(base64Data, 'base64');
       await file.save(imageBuffer, { metadata: { contentType: 'image/jpeg' } });
 
-      // 👈 Shorter-lived signed URL (still long enough for Xpress to fetch + retain)
       const [signedUrl] = await file.getSignedUrl({
         action: 'read',
-        expires: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000,   // 100 years
+        expires: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000, // 100 years
       });
       uploadedPassportPath = fileName;
 
@@ -8183,7 +8953,6 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
         message: xpressError.response?.data?.message,
       });
 
-      // 👈 Cleanup: delete orphaned passport if it was uploaded
       if (uploadedPassportPath) {
         try {
           await bucket.file(uploadedPassportPath).delete();
@@ -8209,7 +8978,6 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
     // ─────────────────────────────────────────────────────
     const newTier = xpressResponse.data?.customer?.tier || 'TIER_2';
     if (newTier !== 'TIER_2' && newTier !== 'TIER_3') {
-      // Rollback passport
       if (uploadedPassportPath) {
         try { await bucket.file(uploadedPassportPath).delete(); } catch {}
       }
@@ -8240,30 +9008,40 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
     // ─────────────────────────────────────────────────────
     // 7. UPDATE FIRESTORE
     // ─────────────────────────────────────────────────────
+    const timeStampDate = admin.firestore.FieldValue.serverTimestamp();
+
+    // 👈 Match the exact data structure from Tier 1
     const xpressReference = {
       ...existingXpress,
       tier: 'TIER_2',
       passportPhoto: passportUrl,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      email: email,
+      firstName: firstName,
+      lastName: lastName,
+      lastSyncedAt: timeStampDate,
+      updatedAt: new Date().toISOString(),
+      // Fallbacks in case wallet fetch failed
+      accountNumber: wallet?.accountNumber || existingXpress.accountNumber,
+      accountName: wallet?.accountName || existingXpress.accountName,
+      bankName: wallet?.bankName || existingXpress.bankName,
+      bankCode: wallet?.bankCode || existingXpress.bankCode,
+      accountReference: wallet?.accountReference || existingXpress.accountReference,
+      status: wallet?.status || existingXpress.status,
+      currency: wallet?.currency || existingXpress.currency,
+      availableBalance: wallet?.availableBalance ?? existingXpress.availableBalance ?? 0,
+      bookedBalance: wallet?.bookedBalance ?? existingXpress.bookedBalance ?? 0,
     };
-
-    if (wallet) {
-      xpressReference.accountNumber = wallet.accountNumber || xpressReference.accountNumber;
-      xpressReference.accountName = wallet.accountName || xpressReference.accountName;
-      xpressReference.bankName = wallet.bankName || xpressReference.bankName;
-      xpressReference.bankCode = wallet.bankCode || xpressReference.bankCode;
-      xpressReference.accountReference = wallet.accountReference || xpressReference.accountReference;
-      xpressReference.status = wallet.status || xpressReference.status;
-      xpressReference.currency = wallet.currency || xpressReference.currency;
-    }
 
     const batch = db.batch();
 
+    // Update Card
     batch.set(cardRef, {
       xpress: xpressReference,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: timeStampDate,
+      // Ensure tier, businessType, num, etc., stay intact via merge
     }, { merge: true });
 
+    // Update User Profile
     batch.set(userRef, {
       xpress: xpressReference,
       tier: 'TIER_2',
@@ -8271,7 +9049,7 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
       passportPhoto: passportUrl,
       notification: true,
       inappnotification: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: timeStampDate,
     }, { merge: true });
 
     // User transaction log (also serves as idempotency marker)
@@ -8290,7 +9068,7 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
       paymentMethod: 'xpress',
       reference: transactionNo,
       transactionNo,
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: timeStampDate,
     });
 
     // Global log
@@ -8306,7 +9084,7 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
       status: 'success',
       paymentMethod: 'xpress',
       reference: transactionNo,
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: timeStampDate,
     });
 
     await batch.commit();
@@ -8370,7 +9148,6 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
     });
   }
 });
-
 // app.post('/create-xpress-tier3-wallet', async (req, res) => {
 //   try {
 //     const {
@@ -8745,6 +9522,427 @@ app.post('/create-xpress-tier2-wallet', async (req, res) => {
 // });
 
 
+// app.post('/create-xpress-tier3-wallet', async (req, res) => {
+//   // ─────────────────────────────────────────────────────
+//   // 🔒 AUTH
+//   // ─────────────────────────────────────────────────────
+//   let userId;
+//   try {
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader?.startsWith('Bearer ')) {
+//       return res.status(401).json({ success: false, message: 'No token provided' });
+//     }
+//     const decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+//     userId = decoded.phone_number;
+//     if (!userId) {
+//       return res.status(400).json({ success: false, message: 'No phone in token' });
+//     }
+//   } catch {
+//     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+//   }
+
+//   const uploadedFiles = [];   // 👈 tracks uploaded docs for cleanup
+
+//   try {
+//     const {
+//       cardId,
+//       bvn,
+//       firstName,
+//       lastName,
+//       dateOfBirth,
+//       email,
+//       address,
+//       passportPhoto,
+//       utilityBill,
+//       transactionNo,
+//       // ❌ userId, phoneNumber — from token
+//     } = req.body;
+
+//     // ─────────────────────────────────────────────────────
+//     // 1. VALIDATE
+//     // ─────────────────────────────────────────────────────
+//     if (!cardId || !bvn || !firstName || !lastName || !dateOfBirth || !email || !address || !passportPhoto || !utilityBill || !transactionNo) {
+//       return res.status(400).json({ success: false, message: 'All Tier 3 information and documents are required.' });
+//     }
+
+//     if (typeof transactionNo !== 'string' || !/^[A-Za-z0-9_-]{6,64}$/.test(transactionNo)) {
+//       return res.status(400).json({ success: false, message: 'Invalid transactionNo' });
+//     }
+//     if (typeof cardId !== 'string' || cardId.length < 4 || cardId.length > 64) {
+//       return res.status(400).json({ success: false, message: 'Invalid cardId' });
+//     }
+
+//     const cleanBvn = String(bvn).replace(/\D/g, '');
+//     if (cleanBvn.length !== 11) {
+//       return res.status(400).json({ success: false, message: 'BVN must be 11 digits' });
+//     }
+
+//     if (!/^\S+@\S+\.\S+$/.test(email)) {
+//       return res.status(400).json({ success: false, message: 'Invalid email' });
+//     }
+//     if (firstName.length > 100 || lastName.length > 100 || address.length > 300) {
+//       return res.status(400).json({ success: false, message: 'Field too long' });
+//     }
+
+//     // 👈 Cap BOTH uploads
+//     if (typeof passportPhoto !== 'string' || passportPhoto.length > 8_000_000) {
+//       return res.status(400).json({ success: false, message: 'Passport photo too large' });
+//     }
+//     if (typeof utilityBill !== 'string' || utilityBill.length > 8_000_000) {
+//       return res.status(400).json({ success: false, message: 'Utility bill too large' });
+//     }
+
+//     const dob = new Date(dateOfBirth);
+//     if (isNaN(dob.getTime())) {
+//       return res.status(400).json({ success: false, message: 'Invalid date of birth' });
+//     }
+//     const ageYears = (Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+//     if (ageYears < 18) {
+//       return res.status(400).json({ success: false, message: 'Must be 18 or older' });
+//     }
+//     const formattedDob = dob.toISOString().split('T')[0];
+
+//     // 🔒 Phone from token
+//     const cleanPhone = userId.replace(/\D/g, '');
+//     if (cleanPhone.length < 10) {
+//       return res.status(400).json({ success: false, message: 'Invalid phone in token' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 2. FIRESTORE REFERENCES
+//     // ─────────────────────────────────────────────────────
+//     const userRef = db.collection('users').doc(userId);
+//     const cardRef = userRef.collection('Cards').doc(cardId);
+//     const upgradeLogRef = userRef.collection('Transactions').doc(transactionNo);
+
+//     const [userDoc, cardDoc, existingLog] = await Promise.all([
+//       userRef.get(),
+//       cardRef.get(),
+//       upgradeLogRef.get(),
+//     ]);
+
+//     // Idempotency
+//     if (existingLog.exists && existingLog.data().status === 'success') {
+//       const d = existingLog.data();
+//       return res.status(200).json({
+//         success: true,
+//         message: 'Tier 3 upgrade already completed',
+//         data: {
+//           cardId: d.cardId,
+//           tier: d.toTier,
+//           customerId: d.customerId,
+//           walletId: d.walletId,
+//           accountNumber: d.accountNumber,
+//           passportPhoto: d.passportPhoto,
+//           utilityBill: d.utilityBill,
+//           reference: transactionNo,
+//         },
+//       });
+//     }
+
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ success: false, message: 'User not found.' });
+//     }
+//     if (!cardDoc.exists) {
+//       return res.status(404).json({ success: false, message: 'Card not found on your account.' });
+//     }
+
+//     const userData = userDoc.data();
+//     const cardData = cardDoc.data();
+
+//     // ─────────────────────────────────────────────────────
+//     // 3. VALIDATE CURRENT STATE
+//     // ─────────────────────────────────────────────────────
+//     const existingXpress = cardData?.xpress || userData?.xpress;
+//     const currentTier = existingXpress?.tier;
+
+//     if (!existingXpress?.customerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'No existing Xpress wallet found. Please create a Tier 1 wallet first.',
+//       });
+//     }
+
+//     if (currentTier === 'TIER_3') {
+//       return res.status(400).json({
+//         success: false,
+//         code: 'ALREADY_UPGRADED',
+//         message: 'User already has a TIER 3 account.',
+//       });
+//     }
+
+//     // 👈 OPTIONAL: require Tier 2 first (see note below)
+//     // if (currentTier !== 'TIER_2') {
+//     //   return res.status(400).json({
+//     //     success: false,
+//     //     code: 'TIER2_REQUIRED',
+//     //     message: 'You must upgrade to Tier 2 before Tier 3.',
+//     //   });
+//     // }
+
+//     // ─────────────────────────────────────────────────────
+//     // 4. UPLOAD DOCUMENTS (with cleanup tracking)
+//     // ─────────────────────────────────────────────────────
+//     const uploadBase64File = async (base64, path, contentType) => {
+//       const clean = base64.replace(/^data:[^;]+;base64,/, '');
+//       const file = bucket.file(path);
+//       await file.save(Buffer.from(clean, 'base64'), {
+//         metadata: { contentType },
+//         resumable: false,
+//       });
+//       uploadedFiles.push(path);   // 👈 track for cleanup
+//       // 👈 numeric timestamp, not string
+//       const [url] = await file.getSignedUrl({
+//         action: 'read',
+//         expires: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000,
+//       });
+//       return url;
+//     };
+
+//     let passportUrl, utilityBillUrl;
+//     try {
+//       passportUrl = await uploadBase64File(
+//         passportPhoto,
+//         `users/${userId}/kyc/tier3/passport_${transactionNo}.jpg`,
+//         'image/jpeg',
+//       );
+//       utilityBillUrl = await uploadBase64File(
+//         utilityBill,
+//         `users/${userId}/kyc/tier3/utility_${transactionNo}.jpg`,
+//         'image/jpeg',
+//       );
+//     } catch (uploadError) {
+//       console.error('DOCUMENT UPLOAD ERROR:', uploadError.message);
+//       // Cleanup any partial uploads
+//       for (const p of uploadedFiles) {
+//         try { await bucket.file(p).delete(); } catch {}
+//       }
+//       return res.status(400).json({ success: false, message: 'Failed to upload KYC documents' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 5. CALL XPRESS — TIER 3 UPGRADE
+//     // ─────────────────────────────────────────────────────
+//     let xpressResponse;
+//     try {
+//       xpressResponse = await axios.put(
+//         `${process.env.XPRESS_BASE_URL}/customer/${existingXpress.customerId}`,
+//         {
+//           tier: 'TIER_3',
+//           bvn: cleanBvn,
+//           firstName,
+//           lastName,
+//           dateOfBirth: formattedDob,
+//           phoneNumber: cleanPhone,
+//           email,
+//           address,
+//           metadata: {
+//             passportPhoto: passportUrl,
+//             utilityBill: utilityBillUrl,
+//             upgradeFrom: currentTier,
+//             upgradeTo: 'TIER_3',
+//           },
+//         },
+//         {
+//           headers: {
+//             Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}`,
+//             'Content-Type': 'application/json',
+//           },
+//           timeout: 30000,
+//         },
+//       );
+//     } catch (xpressError) {
+//       console.error('XPRESS TIER 3 UPGRADE ERROR:', {
+//         status: xpressError.response?.status,
+//         message: xpressError.response?.data?.message,
+//       });
+
+//       // 👈 Cleanup: delete BOTH uploaded docs
+//       for (const p of uploadedFiles) {
+//         try {
+//           await bucket.file(p).delete();
+//           console.log('Cleaned up orphaned doc:', p);
+//         } catch (e) {
+//           console.error('Cleanup failed for', p, e.message);
+//         }
+//       }
+
+//       return res.status(xpressError.response?.status || 400).json({
+//         success: false,
+//         message: xpressError.response?.data?.message || 'Failed to upgrade to Tier 3',
+//       });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 6. VERIFY TIER
+//     // ─────────────────────────────────────────────────────
+//     const newTier = xpressResponse.data?.customer?.tier || 'TIER_3';
+//     if (newTier !== 'TIER_3') {
+//       // Rollback docs
+//       for (const p of uploadedFiles) {
+//         try { await bucket.file(p).delete(); } catch {}
+//       }
+//       return res.status(400).json({
+//         success: false,
+//         message: `Tier upgrade did not take effect. Current tier: ${newTier}`,
+//       });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 7. FRESH WALLET
+//     // ─────────────────────────────────────────────────────
+//     let wallet = null;
+//     try {
+//       const walletResponse = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/wallet/customer`,
+//         {
+//           params: { customerId: existingXpress.customerId },
+//           headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//           timeout: 15000,
+//         },
+//       );
+//       wallet = walletResponse.data?.wallet;
+//     } catch (fetchError) {
+//       console.warn('Could not fetch fresh wallet details:', fetchError.message);
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 8. UPDATE FIRESTORE
+//     // ─────────────────────────────────────────────────────
+//     const xpressReference = {
+//       ...existingXpress,
+//       tier: 'TIER_3',
+//       passportPhoto: passportUrl,
+//       utilityBill: utilityBillUrl,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     };
+
+//     if (wallet) {
+//       xpressReference.accountNumber = wallet.accountNumber || xpressReference.accountNumber;
+//       xpressReference.accountName = wallet.accountName || xpressReference.accountName;
+//       xpressReference.bankName = wallet.bankName || xpressReference.bankName;
+//       xpressReference.bankCode = wallet.bankCode || xpressReference.bankCode;
+//       xpressReference.accountReference = wallet.accountReference || xpressReference.accountReference;
+//       xpressReference.status = wallet.status || xpressReference.status;
+//       xpressReference.currency = wallet.currency || xpressReference.currency;
+//     }
+
+//     const batch = db.batch();
+
+//     batch.set(cardRef, {
+//       xpress: xpressReference,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     }, { merge: true });
+
+//     batch.set(userRef, {
+//       xpress: xpressReference,
+//       tier: 'TIER_3',
+//       nubanEnabled: true,
+//       passportPhoto: passportUrl,
+//       utilityBill: utilityBillUrl,
+//       notification: true,
+//       inappnotification: true,
+//       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+//     }, { merge: true });
+
+//     batch.set(upgradeLogRef, {
+//       type: 'TierUpgrade',
+//       provider: 'xpress',
+//       status: 'success',
+//       userId,
+//       cardId,
+//       fromTier: currentTier,
+//       toTier: 'TIER_3',
+//       customerId: existingXpress.customerId,
+//       walletId: existingXpress.walletId,
+//       accountNumber: xpressReference.accountNumber,
+//       passportPhoto: passportUrl,
+//       utilityBill: utilityBillUrl,
+//       paymentMethod: 'xpress',
+//       reference: transactionNo,
+//       transactionNo,
+//       date: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     batch.set(db.collection('AllTransaction').doc(transactionNo), {
+//       type: 'TierUpgrade',
+//       provider: 'xpress',
+//       userId,
+//       cardId,
+//       customerId: existingXpress.customerId,
+//       walletId: existingXpress.walletId,
+//       fromTier: currentTier,
+//       toTier: 'TIER_3',
+//       status: 'success',
+//       paymentMethod: 'xpress',
+//       reference: transactionNo,
+//       date: admin.firestore.FieldValue.serverTimestamp(),
+//     });
+
+//     await batch.commit();
+
+//     // ─────────────────────────────────────────────────────
+//     // 9. PUSH
+//     // ─────────────────────────────────────────────────────
+//     const fcmToken = userData?.fcm;
+//     if (fcmToken) {
+//       try {
+//         await messaging.send({
+//           token: fcmToken,
+//           notification: {
+//             title: 'Account Upgraded 🎉',
+//             body: "You're now a Transfr Platinum (Tier 3) account holder!",
+//           },
+//           data: { type: 'tier_upgrade', tier: 'TIER_3', reference: transactionNo },
+//         });
+//       } catch (pushError) {
+//         console.error('Push notification failed:', pushError);
+//       }
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 10. RESPONSE
+//     // ─────────────────────────────────────────────────────
+//     return res.status(201).json({
+//       success: true,
+//       message: 'Tier 3 upgrade completed successfully',
+//       data: {
+//         cardId,
+//         tier: 'TIER_3',
+//         customerId: existingXpress.customerId,
+//         walletId: existingXpress.walletId,
+//         accountNumber: xpressReference.accountNumber,
+//         accountName: xpressReference.accountName,
+//         bankName: xpressReference.bankName,
+//         bankCode: xpressReference.bankCode,
+//         accountReference: xpressReference.accountReference,
+//         status: xpressReference.status,
+//         passportPhoto: passportUrl,
+//         utilityBill: utilityBillUrl,
+//         reference: transactionNo,
+//       },
+//     });
+
+//   } catch (error) {
+//     // 👈 Catch-all cleanup
+//     for (const p of uploadedFiles) {
+//       try { await bucket.file(p).delete(); } catch {}
+//     }
+
+//     console.error('TIER 3 WALLET ERROR:', {
+//       message: error.message,
+//       status: error.response?.status,
+//       apiMessage: error.response?.data?.message,
+//     });
+
+//     return res.status(error.response?.status || 500).json({
+//       success: false,
+//       message: error.response?.data?.message || error.message || 'Unable to upgrade to Tier 3',
+//     });
+//   }
+// });
+
+
 app.post('/create-xpress-tier3-wallet', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH
@@ -8764,7 +9962,7 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 
-  const uploadedFiles = [];   // 👈 tracks uploaded docs for cleanup
+  const uploadedFiles = [];   // tracks uploaded docs for cleanup
 
   try {
     const {
@@ -8778,7 +9976,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
       passportPhoto,
       utilityBill,
       transactionNo,
-      // ❌ userId, phoneNumber — from token
     } = req.body;
 
     // ─────────────────────────────────────────────────────
@@ -8807,7 +10004,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Field too long' });
     }
 
-    // 👈 Cap BOTH uploads
     if (typeof passportPhoto !== 'string' || passportPhoto.length > 8_000_000) {
       return res.status(400).json({ success: false, message: 'Passport photo too large' });
     }
@@ -8825,7 +10021,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
     }
     const formattedDob = dob.toISOString().split('T')[0];
 
-    // 🔒 Phone from token
     const cleanPhone = userId.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
       return res.status(400).json({ success: false, message: 'Invalid phone in token' });
@@ -8894,15 +10089,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
       });
     }
 
-    // 👈 OPTIONAL: require Tier 2 first (see note below)
-    // if (currentTier !== 'TIER_2') {
-    //   return res.status(400).json({
-    //     success: false,
-    //     code: 'TIER2_REQUIRED',
-    //     message: 'You must upgrade to Tier 2 before Tier 3.',
-    //   });
-    // }
-
     // ─────────────────────────────────────────────────────
     // 4. UPLOAD DOCUMENTS (with cleanup tracking)
     // ─────────────────────────────────────────────────────
@@ -8913,8 +10099,7 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
         metadata: { contentType },
         resumable: false,
       });
-      uploadedFiles.push(path);   // 👈 track for cleanup
-      // 👈 numeric timestamp, not string
+      uploadedFiles.push(path);   // track for cleanup
       const [url] = await file.getSignedUrl({
         action: 'read',
         expires: Date.now() + 100 * 365 * 24 * 60 * 60 * 1000,
@@ -8936,7 +10121,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
       );
     } catch (uploadError) {
       console.error('DOCUMENT UPLOAD ERROR:', uploadError.message);
-      // Cleanup any partial uploads
       for (const p of uploadedFiles) {
         try { await bucket.file(p).delete(); } catch {}
       }
@@ -8980,7 +10164,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
         message: xpressError.response?.data?.message,
       });
 
-      // 👈 Cleanup: delete BOTH uploaded docs
       for (const p of uploadedFiles) {
         try {
           await bucket.file(p).delete();
@@ -9001,7 +10184,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
     // ─────────────────────────────────────────────────────
     const newTier = xpressResponse.data?.customer?.tier || 'TIER_3';
     if (newTier !== 'TIER_3') {
-      // Rollback docs
       for (const p of uploadedFiles) {
         try { await bucket.file(p).delete(); } catch {}
       }
@@ -9032,29 +10214,36 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
     // ─────────────────────────────────────────────────────
     // 8. UPDATE FIRESTORE
     // ─────────────────────────────────────────────────────
+    const timeStampDate = admin.firestore.FieldValue.serverTimestamp();
+
+    // Match exact structure from Tier 1 & Tier 2
     const xpressReference = {
       ...existingXpress,
       tier: 'TIER_3',
       passportPhoto: passportUrl,
       utilityBill: utilityBillUrl,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      email: email,
+      firstName: firstName,
+      lastName: lastName,
+      lastSyncedAt: timeStampDate,
+      updatedAt: new Date().toISOString(),
+      // Fallbacks in case wallet fetch failed
+      accountNumber: wallet?.accountNumber || existingXpress.accountNumber,
+      accountName: wallet?.accountName || existingXpress.accountName,
+      bankName: wallet?.bankName || existingXpress.bankName,
+      bankCode: wallet?.bankCode || existingXpress.bankCode,
+      accountReference: wallet?.accountReference || existingXpress.accountReference,
+      status: wallet?.status || existingXpress.status,
+      currency: wallet?.currency || existingXpress.currency,
+      availableBalance: wallet?.availableBalance ?? existingXpress.availableBalance ?? 0,
+      bookedBalance: wallet?.bookedBalance ?? existingXpress.bookedBalance ?? 0,
     };
-
-    if (wallet) {
-      xpressReference.accountNumber = wallet.accountNumber || xpressReference.accountNumber;
-      xpressReference.accountName = wallet.accountName || xpressReference.accountName;
-      xpressReference.bankName = wallet.bankName || xpressReference.bankName;
-      xpressReference.bankCode = wallet.bankCode || xpressReference.bankCode;
-      xpressReference.accountReference = wallet.accountReference || xpressReference.accountReference;
-      xpressReference.status = wallet.status || xpressReference.status;
-      xpressReference.currency = wallet.currency || xpressReference.currency;
-    }
 
     const batch = db.batch();
 
     batch.set(cardRef, {
       xpress: xpressReference,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: timeStampDate,
     }, { merge: true });
 
     batch.set(userRef, {
@@ -9065,7 +10254,7 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
       utilityBill: utilityBillUrl,
       notification: true,
       inappnotification: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: timeStampDate,
     }, { merge: true });
 
     batch.set(upgradeLogRef, {
@@ -9084,7 +10273,7 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
       paymentMethod: 'xpress',
       reference: transactionNo,
       transactionNo,
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: timeStampDate,
     });
 
     batch.set(db.collection('AllTransaction').doc(transactionNo), {
@@ -9099,7 +10288,7 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
       status: 'success',
       paymentMethod: 'xpress',
       reference: transactionNo,
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: timeStampDate,
     });
 
     await batch.commit();
@@ -9147,7 +10336,6 @@ app.post('/create-xpress-tier3-wallet', async (req, res) => {
     });
 
   } catch (error) {
-    // 👈 Catch-all cleanup
     for (const p of uploadedFiles) {
       try { await bucket.file(p).delete(); } catch {}
     }
