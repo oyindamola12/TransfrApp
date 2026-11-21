@@ -15747,11 +15747,11 @@ app.post('/wallet-to-wallet', async (req, res) => {
     // =====================================================
     // 🔒 1.5 VERIFY PASSCODE
     // =====================================================
-    if (!senderData.passcode) {
+    if (!senderData.transferPasscode) {
       return res.status(400).json({ success: false, message: 'No passcode set on this account' });
     }
 
-    const isPasscodeValid = await bcrypt.compare(passcode, senderData.passcode);
+    const isPasscodeValid = await bcrypt.compare(passcode, senderData.transferPasscode);
     if (!isPasscodeValid) {
       return res.status(400).json({ success: false, message: 'Invalid passcode' });
     }
