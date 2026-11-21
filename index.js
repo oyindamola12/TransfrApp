@@ -15682,19 +15682,19 @@ app.post('/wallet-to-wallet', async (req, res) => {
     // =====================================================
     // 1. VALIDATION & REFERENCES
     // =====================================================
-    if (
-      !cardId ||
-      !receiverUserId ||
-      !receiverCardId ||
-      !transferAmount ||
-      transferAmount <= 0 ||
-      !passcode
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing or invalid transfer information (including passcode)',
-      });
-    }
+    // if (
+    //   !cardId ||
+    //   !receiverUserId ||
+    //   !receiverCardId ||
+    //   !transferAmount ||
+    //   transferAmount <= 0 ||
+    //   !passcode
+    // ) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Missing or invalid transfer information (including passcode)',
+    //   });
+    // }
 
     if (cardId === receiverCardId) {
       return res.status(400).json({
