@@ -8,6 +8,7 @@ const cors = require('cors');
 const crypto = require('crypto');
 const CryptoJS = require('crypto-js');
 const bcrypt = require('bcrypt');
+
 require('dotenv').config();
 const app = express();
 const TRANSFER_SECRET = process.env.TRANSFER_JWT_SECRET;
@@ -15643,7 +15644,7 @@ app.post('/xpress-customer-data', async (req, res) => {
 // });
 
 
-const bcrypt = require('bcryptjs'); // Make sure this is at the top of your file
+// Make sure this is at the top of your file
 
 app.post('/wallet-to-wallet', async (req, res) => {
   // =====================================================
