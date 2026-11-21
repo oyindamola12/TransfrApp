@@ -8764,7 +8764,7 @@ app.post('/create-xpress-wallet', async (req, res) => {
 // });
 
 
-app.get('/api/resolve-card/:cardNumber', async (req, res) => {
+app.get('/api/resolve-card', async (req, res) => {
   try {
     const { cardNumber } = req.params;
     
@@ -8787,12 +8787,14 @@ app.get('/api/resolve-card/:cardNumber', async (req, res) => {
       success: true,
       firstname: data.firstname,
       lastname: data.lastname,
+      phonenumber:data.phonenumber
       // Never return balance, fcm, or phonenumber here!
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+
 app.post('/create-xpress-tier2-wallet', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH: derive userId from verified token
@@ -15672,7 +15674,7 @@ app.post('/wallet-to-wallet', async (req, res) => {
       receiverCardId,
       amount,
       passcode, // 👈 Extract passcode from body
-      transactionNo,
+  
       cardType,
       // ❌ Removed userId, firstname, lastname from body — we use DB/Token instead
     } = req.body;
@@ -15682,19 +15684,21 @@ app.post('/wallet-to-wallet', async (req, res) => {
     // =====================================================
     // 1. VALIDATION & REFERENCES
     // =====================================================
-    // if (
-    //   !cardId ||
-    //   !receiverUserId ||
-    //   !receiverCardId ||
-    //   !transferAmount ||
-    //   transferAmount <= 0 ||
-    //   !passcode
-    // ) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: 'Missing or invalid transfer information (including passcode)',
-    //   });
-    // }
+    if (
+      !cardId ||
+      !receiverUserId ||
+      !receiverCardId ||
+      !transferAmount ||
+      transferAmount <= 0 ||
+      !passcode
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing or invalid transfer information (including passcode)',
+      });
+    }
+
+
 
     if (cardId === receiverCardId) {
       return res.status(400).json({
@@ -15703,9 +15707,7 @@ app.post('/wallet-to-wallet', async (req, res) => {
       });
     }
 
-    const reference =
-      transactionNo ||
-      `TRF-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const reference = `TRF-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
     const senderUserRef = db.collection('users').doc(userId);
     const receiverUserRef = db.collection('users').doc(receiverUserId);
