@@ -8764,7 +8764,7 @@ app.post('/create-xpress-wallet', async (req, res) => {
 // });
 
 
-app.get('/api/resolve-card', async (req, res) => {
+app.get('/api/resolve-card/:cardNumber', async (req, res) => {
   try {
     const { cardNumber } = req.params;
     
