@@ -19904,45 +19904,6 @@ app.post('/wallet-to-ticket', async (req, res) => {
   }
 });
 
-// app.post('/api/user/verify-pin', async (req, res) => {
-//   try {
-//     const authHeader = req.headers.authorization;
-//     if (!authHeader?.startsWith('Bearer ')) {
-//       return res.status(401).json({ success: false, message: 'No token provided' });
-//     }
-
-//     const decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
-//     const userId = decoded.phone_number;
-
-//     const { pin } = req.body;
-//     if (!pin) {
-//       return res.status(400).json({ success: false, message: 'PIN is required' });
-//     }
-
-//     const userDoc = await db.collection('users').doc(userId).get();
-//     if (!userDoc.exists) {
-//       return res.status(404).json({ success: false, message: 'User not found' });
-//     }
-
-//     const userData = userDoc.data();
-//     if (!userData.passcode) {
-//       return res.status(400).json({ success: false, message: 'No passcode set' });
-//     }
-
-//     // Verify against the hash
-//     const isValid = await bcrypt.compare(pin, userData.passcode);
-    
-//     if (!isValid) {
-//       return res.status(400).json({ success: false, message: 'Invalid passcode' });
-//     }
-
-//     return res.json({ success: true, message: 'PIN verified successfully' });
-//   } catch (error) {
-//     console.error('Verify PIN Error:', error);
-//     res.status(500).json({ success: false, message: 'Server error' });
-//   }
-// });
-
 app.post('/api/user/verify-pin', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -19954,36 +19915,23 @@ app.post('/api/user/verify-pin', async (req, res) => {
     const userId = decoded.phone_number;
 
     const { pin } = req.body;
-    
-    // 🚨 DEBUGGING LOGS
-    console.log("=== VERIFY PIN DEBUG ===");
-    console.log("User ID from token:", userId);
-    console.log("Incoming PIN (type):", typeof pin, pin);
-
     if (!pin) {
       return res.status(400).json({ success: false, message: 'PIN is required' });
     }
 
     const userDoc = await db.collection('users').doc(userId).get();
     if (!userDoc.exists) {
-      console.log("❌ User not found in Firestore for ID:", userId);
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     const userData = userDoc.data();
-    console.log("Stored Passcode in DB:", userData.passcode);
-
-    if (!userData.passcode) {
+    if (!userData.transferPasscode) {
       return res.status(400).json({ success: false, message: 'No passcode set' });
     }
 
-    // Convert pin to string just in case the frontend sent a number
-    const pinString = String(pin);
-
     // Verify against the hash
-    const isValid = await bcrypt.compare(pinString, userData.passcode);
-    console.log("Is Bcrypt Match?:", isValid);
-
+    const isValid = await bcrypt.compare(pin, userData.transferPasscode);
+    
     if (!isValid) {
       return res.status(400).json({ success: false, message: 'Invalid passcode' });
     }
