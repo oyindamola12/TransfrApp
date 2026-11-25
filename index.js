@@ -2669,7 +2669,6 @@ app.post('/bank-withdrawal', async (req, res) => {
   }
 });
 
-
 // app.post('/api/register', async (req, res) => {
 //   try {
 //     // 1. Get the Firebase Token from the header
@@ -3385,7 +3384,6 @@ app.post('/api/user/language', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to update language' });
   }
 });
-
 
 // POST /api/transfer/pending
 app.post('/api/transfer/pending', async (req, res) => {
@@ -10859,7 +10857,6 @@ app.post('/api/signatories', async (req, res) => {
 // });
 
 
-
 app.post('/xpress-customer-data', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH — verify token before anything else
@@ -11016,7 +11013,6 @@ app.post('/xpress-customer-data', async (req, res) => {
     });
   }
 });
-
 
 // app.post('/xpress-customer-data2', async (req, res) => {
 //   try {
@@ -15648,6 +15644,7 @@ app.post('/xpress-customer-data', async (req, res) => {
 
 // Make sure this is at the top of your file
 
+
 app.post('/wallet-to-wallet', async (req, res) => {
   // =====================================================
   // 🔒 0. AUTHENTICATION (Derive Sender ID from Token)
@@ -19907,8 +19904,44 @@ app.post('/wallet-to-ticket', async (req, res) => {
   }
 });
 
+// app.post('/api/user/verify-pin', async (req, res) => {
+//   try {
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader?.startsWith('Bearer ')) {
+//       return res.status(401).json({ success: false, message: 'No token provided' });
+//     }
 
+//     const decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+//     const userId = decoded.phone_number;
 
+//     const { pin } = req.body;
+//     if (!pin) {
+//       return res.status(400).json({ success: false, message: 'PIN is required' });
+//     }
+
+//     const userDoc = await db.collection('users').doc(userId).get();
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ success: false, message: 'User not found' });
+//     }
+
+//     const userData = userDoc.data();
+//     if (!userData.passcode) {
+//       return res.status(400).json({ success: false, message: 'No passcode set' });
+//     }
+
+//     // Verify against the hash
+//     const isValid = await bcrypt.compare(pin, userData.passcode);
+    
+//     if (!isValid) {
+//       return res.status(400).json({ success: false, message: 'Invalid passcode' });
+//     }
+
+//     return res.json({ success: true, message: 'PIN verified successfully' });
+//   } catch (error) {
+//     console.error('Verify PIN Error:', error);
+//     res.status(500).json({ success: false, message: 'Server error' });
+//   }
+// });
 
 app.post('/api/user/verify-pin', async (req, res) => {
   try {
@@ -19921,23 +19954,36 @@ app.post('/api/user/verify-pin', async (req, res) => {
     const userId = decoded.phone_number;
 
     const { pin } = req.body;
+    
+    // 🚨 DEBUGGING LOGS
+    console.log("=== VERIFY PIN DEBUG ===");
+    console.log("User ID from token:", userId);
+    console.log("Incoming PIN (type):", typeof pin, pin);
+
     if (!pin) {
       return res.status(400).json({ success: false, message: 'PIN is required' });
     }
 
     const userDoc = await db.collection('users').doc(userId).get();
     if (!userDoc.exists) {
+      console.log("❌ User not found in Firestore for ID:", userId);
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     const userData = userDoc.data();
+    console.log("Stored Passcode in DB:", userData.passcode);
+
     if (!userData.passcode) {
       return res.status(400).json({ success: false, message: 'No passcode set' });
     }
 
+    // Convert pin to string just in case the frontend sent a number
+    const pinString = String(pin);
+
     // Verify against the hash
-    const isValid = await bcrypt.compare(pin, userData.passcode);
-    
+    const isValid = await bcrypt.compare(pinString, userData.passcode);
+    console.log("Is Bcrypt Match?:", isValid);
+
     if (!isValid) {
       return res.status(400).json({ success: false, message: 'Invalid passcode' });
     }
@@ -19948,6 +19994,7 @@ app.post('/api/user/verify-pin', async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+
 app.post('/transfer-scan', async (req, res) => {
   try {
     // ─────────────────────────────────────────────────────
@@ -20967,7 +21014,6 @@ app.post('/voucher-scan', async (req, res) => {
     });
   }
 });
-
 
 app.post('/ticket-scan', async (req, res) => {
   try {
@@ -25276,7 +25322,6 @@ app.post('/xpress/webhook', async (req, res) => {
 // });
 
 
-
 app.post('/sync-xpress-transactions', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH
@@ -25434,7 +25479,8 @@ app.post('/sync-xpress-transactions', async (req, res) => {
     console.error('Xpress Transaction Sync Error:', error.response?.data || error.message);
     return res.status(500).json({ success: false, message: 'Failed to sync transactions' });
   }
-});
+})
+
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
