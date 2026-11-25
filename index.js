@@ -25270,6 +25270,168 @@ app.post('/xpress/webhook', async (req, res) => {
 // });
 
 
+// app.post('/sync-xpress-transactions', async (req, res) => {
+//   // ─────────────────────────────────────────────────────
+//   // 🔒 AUTH
+//   // ─────────────────────────────────────────────────────
+//   let userId;
+//   try {
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader?.startsWith('Bearer ')) {
+//       return res.status(401).json({ success: false, message: 'No token provided' });
+//     }
+//     const decoded = await admin.auth().verifyIdToken(authHeader.split(' ')[1]);
+//     userId = decoded.phone_number;
+//     if (!userId) {
+//       return res.status(400).json({ success: false, message: 'No phone in token' });
+//     }
+//   } catch {
+//     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+//   }
+
+//   try {
+//     const { cardId, customerId: bodyCustomerId } = req.body;
+
+//     if (!cardId || typeof cardId !== 'string' || cardId.length < 4 || cardId.length > 64) {
+//       return res.status(400).json({ success: false, message: 'Missing or invalid cardId' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 🔒 Resolve customerId from the user's own card — never from body
+//     // ─────────────────────────────────────────────────────
+//     const cardSnap = await db
+//       .collection('users').doc(userId)
+//       .collection('Cards').doc(cardId)
+//       .get();
+
+//     if (!cardSnap.exists) {
+//       return res.status(404).json({ success: false, message: 'Card not found' });
+//     }
+
+//     const customerId = cardSnap.data()?.xpress?.customerId;
+//     if (!customerId) {
+//       return res.status(400).json({ success: false, message: 'Card has no Xpress wallet' });
+//     }
+
+//     if (bodyCustomerId && bodyCustomerId !== customerId) {
+//       return res.status(403).json({ success: false, message: 'customerId mismatch' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 1. Fetch all pages from Xpress
+//     // ─────────────────────────────────────────────────────
+//     let allTransactions = [];
+//     let page = 1;
+//     let hasMore = true;
+
+//     while (hasMore && page <= 5) {
+//       const response = await axios.get(
+//         `${process.env.XPRESS_BASE_URL}/transaction/customer`,
+//         {
+//           params: { customerId, page, perPage: 50 },
+//           headers: { Authorization: `Bearer ${process.env.PROVIDUS_SECRET_KEY}` },
+//           timeout: 15000,
+//         },
+//       );
+
+//       const txs = response.data?.transactions;
+//       // 👈 Guard against non-array responses
+//       if (!Array.isArray(txs) || txs.length === 0) {
+//         hasMore = false;
+//       } else {
+//         allTransactions = [...allTransactions, ...txs];
+//         page++;
+//       }
+//     }
+
+//     if (allTransactions.length === 0) {
+//       return res.status(200).json({ success: true, message: 'No transactions found' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 2. Filter to inbound bank transfers only
+//     // ─────────────────────────────────────────────────────
+//     const filteredTransactions = allTransactions.filter(txn => txn.category === 'NIP_CREDIT');
+
+//     if (filteredTransactions.length === 0) {
+//       return res.status(200).json({ success: true, message: 'No inbound bank transfers found' });
+//     }
+
+//     // ─────────────────────────────────────────────────────
+//     // 3. Parallel existence check (was N sequential reads)
+//     // ─────────────────────────────────────────────────────
+//     const userRef = db.collection('users').doc(userId);
+//     const txnRefs = filteredTransactions.map(txn =>
+//       userRef.collection('Transactions').doc(txn.reference),
+//     );
+
+//     // db.getAll accepts up to 500 refs — safe here (max 250)
+//     const existingSnaps = await db.getAll(...txnRefs);
+//     const newTransactionsCount = existingSnaps.filter(s => !s.exists).length;
+
+//     // ─────────────────────────────────────────────────────
+//     // 4. Write to Firestore in batches of 400 (safe under 500)
+//     // ─────────────────────────────────────────────────────
+//     const FIRESTORE_BATCH_LIMIT = 400;   // 200 txns × 2 writes each
+//     for (let i = 0; i < filteredTransactions.length; i += 200) {
+//       const chunk = filteredTransactions.slice(i, i + 200);
+//       const batch = db.batch();
+
+//       for (const txn of chunk) {
+//         const txnRef = userRef.collection('Transactions').doc(txn.reference);
+//         const globalRef = db.collection('AllTransaction').doc(txn.reference);
+
+//         const senderName = txn.metadata?.originatorAccountName || 'External Bank';
+//         const senderAccountNumber = txn.metadata?.originatorAccountNumber || '';
+
+//         const data = {
+//           type: 'BankTransferReceived',
+//           provider: 'xpress',
+//           category: txn.category,
+//           status: 'BankFund',
+//           amount: Number(txn.amount),
+//           currency: txn.currency || 'NGN',
+//           balanceBefore: txn.balance_before ? Number(txn.balance_before) : null,
+//           balanceAfter: txn.balance_after ? Number(txn.balance_after) : null,
+//           description: txn.description || '',
+//           firstname: senderName,
+//           lastname:'',
+//           senderAccountNumber,
+//           bankName: 'External Bank',
+//           transactionNo: txn.reference,
+//           reference: txn.reference,
+//           xpressReference: txn.reference,
+//           paymentMethod: 'bank',
+//           date: txn.createdAt
+//             ? new Date(txn.createdAt)
+//             : admin.firestore.FieldValue.serverTimestamp(),
+//           xpressRawData: txn,
+//           cardType: 'wallet',
+//           userId,                    // 👈 for audit / cross-user safety
+//         };
+
+//         batch.set(txnRef, data, { merge: true });
+//         batch.set(globalRef, data, { merge: true });
+//       }
+
+//       await batch.commit();
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `Synced ${newTransactionsCount} new inbound bank transfers`,
+//       totalFetched: allTransactions.length,
+//       filtered: filteredTransactions.length,
+//     });
+
+//   } catch (error) {
+//     console.error('Xpress Transaction Sync Error:', error.response?.data || error.message);
+//     return res.status(500).json({ success: false, message: 'Failed to sync transactions' });
+//   }
+// })
+
+
+
 app.post('/sync-xpress-transactions', async (req, res) => {
   // ─────────────────────────────────────────────────────
   // 🔒 AUTH
@@ -25297,7 +25459,7 @@ app.post('/sync-xpress-transactions', async (req, res) => {
     }
 
     // ─────────────────────────────────────────────────────
-    // 🔒 Resolve customerId from the user's own card — never from body
+    // 🔒 Resolve customerId from the user's own card
     // ─────────────────────────────────────────────────────
     const cardSnap = await db
       .collection('users').doc(userId)
@@ -25335,7 +25497,6 @@ app.post('/sync-xpress-transactions', async (req, res) => {
       );
 
       const txs = response.data?.transactions;
-      // 👈 Guard against non-array responses
       if (!Array.isArray(txs) || txs.length === 0) {
         hasMore = false;
       } else {
@@ -25358,21 +25519,20 @@ app.post('/sync-xpress-transactions', async (req, res) => {
     }
 
     // ─────────────────────────────────────────────────────
-    // 3. Parallel existence check (was N sequential reads)
+    // 3. Parallel existence check
     // ─────────────────────────────────────────────────────
     const userRef = db.collection('users').doc(userId);
     const txnRefs = filteredTransactions.map(txn =>
       userRef.collection('Transactions').doc(txn.reference),
     );
 
-    // db.getAll accepts up to 500 refs — safe here (max 250)
     const existingSnaps = await db.getAll(...txnRefs);
     const newTransactionsCount = existingSnaps.filter(s => !s.exists).length;
 
     // ─────────────────────────────────────────────────────
-    // 4. Write to Firestore in batches of 400 (safe under 500)
+    // 4. Write to Firestore in batches
     // ─────────────────────────────────────────────────────
-    const FIRESTORE_BATCH_LIMIT = 400;   // 200 txns × 2 writes each
+    const FIRESTORE_BATCH_LIMIT = 400;
     for (let i = 0; i < filteredTransactions.length; i += 200) {
       const chunk = filteredTransactions.slice(i, i + 200);
       const batch = db.batch();
@@ -25395,6 +25555,7 @@ app.post('/sync-xpress-transactions', async (req, res) => {
           balanceAfter: txn.balance_after ? Number(txn.balance_after) : null,
           description: txn.description || '',
           firstname: senderName,
+          lastname:'',
           senderAccountNumber,
           bankName: 'External Bank',
           transactionNo: txn.reference,
@@ -25406,7 +25567,7 @@ app.post('/sync-xpress-transactions', async (req, res) => {
             : admin.firestore.FieldValue.serverTimestamp(),
           xpressRawData: txn,
           cardType: 'wallet',
-          userId,                    // 👈 for audit / cross-user safety
+          userId,
         };
 
         batch.set(txnRef, data, { merge: true });
@@ -25414,6 +25575,16 @@ app.post('/sync-xpress-transactions', async (req, res) => {
       }
 
       await batch.commit();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // 5. UPDATE NOTIFICATIONS (Only if there is new money)
+    // ─────────────────────────────────────────────────────
+    if (newTransactionsCount > 0) {
+      await userRef.update({
+        notification: true,
+        inappnotification: true,
+      });
     }
 
     return res.status(200).json({
@@ -25427,8 +25598,7 @@ app.post('/sync-xpress-transactions', async (req, res) => {
     console.error('Xpress Transaction Sync Error:', error.response?.data || error.message);
     return res.status(500).json({ success: false, message: 'Failed to sync transactions' });
   }
-})
-
+});
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
